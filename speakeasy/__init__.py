@@ -2,6 +2,7 @@ import collections
 import threading
 import time
 import zmq
+import socket
 
 class Speakeasy(object):
   def __init__(self, metric_socket, cmd_port, pub_port, emitter_name, emission_interval):
@@ -12,6 +13,7 @@ class Speakeasy(object):
     self.cmd_port = cmd_port
     self.emitter_name = emitter_name
     self.emission_interval = emission_interval
+    self.hostname = socket.getfqdn()
 
     self.context = zmq.Context()
 
@@ -21,11 +23,11 @@ class Speakeasy(object):
 
     # Listen for commands
     self.cmd_socket = self.context.socket(zmq.REP)
-    self.cmd_socket.bind('tcp://*:{0}'.format(self.cmd_port))
+    self.cmd_socket.bind('tcp://127.0.0.1:{0}'.format(self.cmd_port))
 
     # Publish metrics
     self.pub_socket = self.context.socket(zmq.PUB)
-    self.pub_socket.bind('tcp://*:{0}'.format(self.pub_port))
+    self.pub_socket.bind('tcp://127.0.0.1:{0}'.format(self.pub_port))
 
     # Register sockets for polling
     self.poller = zmq.Poller()
@@ -42,6 +44,7 @@ class Speakeasy(object):
 
   def process_metric(self, metric):
     """ Process metrics and store and publish """
+    print "Received metric: {0}".format(metric)
     app_name, metric_name, metric_type, value = metric.split('|')
     try:
       value = float(value)
@@ -60,7 +63,8 @@ class Speakeasy(object):
       print "Bad metric type"
       return
 
-    self.pub_socket.send("{0}|{1}|{2}|{3}|{4}".format(app_name, metric_name, metric_type, pub_val, time.time()))
+    msg = "{0}|{1}|{2}|{3}|{4}|{5}".format(self.hostname, app_name, metric_name, metric_type, pub_val, time.time())
+    self.pub_socket.send(msg)
 
   def process_command(self, cmd):
     """ Process command and reply """
@@ -121,7 +125,7 @@ class Speakeasy(object):
       self.emit_thread.join()
 
 if __name__ == '__main__':
-  server = Speakeasy('/var/tmp/metrics_socket', '5000', '50001', None, 5)
+  server = Speakeasy('/var/tmp/metric_socket', '5001', '5002', None, 5)
   server.start()
   while True:
     try:
