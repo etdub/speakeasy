@@ -7,12 +7,18 @@ import time
 
 def main():
   parser = argparse.ArgumentParser(description='Run Speakeasy server')
-  parser.add_argument('-ms', '--metric-socket', required=True, help='Metric socket to listen on')
-  parser.add_argument('-cp', '--cmd-port', required=True, help='Port to receive commands on')
-  parser.add_argument('-pp', '--pub-port', required=True, help='Port to publish updates on')
-  parser.add_argument('-e', '--emitter', required=False, help='Module to emit data through periodically')
-  parser.add_argument('-ea', '--emitter-args', required=False, nargs='*', help='Module to emit data through periodically')
-  parser.add_argument('-ei', '--emission-interval', required=False, type=float, help='Frequency to emit data (seconds)')
+  parser.add_argument('-ms', '--metric-socket', required=True,
+    help='Metric socket to listen on')
+  parser.add_argument('-cp', '--cmd-port', required=True,
+          help='Port to receive commands on')
+  parser.add_argument('-pp', '--pub-port', required=True,
+          help='Port to publish updates on')
+  parser.add_argument('-e', '--emitter', required=True,
+          help='Module to emit data through periodically')
+  parser.add_argument('-ea', '--emitter-args', required=False, nargs='*',
+          help='Arguments to be passed to emitter module')
+  parser.add_argument('-ei', '--emission-interval', default=60, required=False, type=float,
+          help='Frequency to emit data (seconds)')
 
   args = parser.parse_args()
 

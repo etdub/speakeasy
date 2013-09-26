@@ -8,9 +8,8 @@ import ujson
 import zmq
 
 class Speakeasy(object):
-  def __init__(self, metric_socket, cmd_port, pub_port, emitter_name, emitter_args, emission_interval):
+  def __init__(self, metric_socket, cmd_port, pub_port, emitter_name, emitter_args=None, emission_interval=60):
     """ Aggregate metrics and emit. Also support live data querying. """
-
     self.metric_socket = metric_socket
     self.pub_port = pub_port
     self.cmd_port = cmd_port
@@ -20,9 +19,10 @@ class Speakeasy(object):
 
     # Process the args for emitter
     self.emitter_args = {}
-    for arg in emitter_args:
-      k,v = arg.split('=')
-      self.emitter_args[k] = v
+    if emitter_args:
+        for arg in emitter_args:
+          k,v = arg.split('=')
+          self.emitter_args[k] = v
 
     # Setup the emitter
     self.emitter = import_emitter(self.emitter_name, **self.emitter_args)
