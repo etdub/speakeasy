@@ -53,9 +53,8 @@ class Speakeasy(object):
     self.emit_thread = threading.Thread(target=self.emit_metrics, args=())
 
     # Init metrics
+    # Index metrics by appname
     self.metrics = {}
-    self.metrics['COUNTER'] = collections.defaultdict(int)
-    self.metrics['GAUGE'] = collections.defaultdict(list)
 
   def process_metric(self, metric):
     """ Process metrics and store and publish """
@@ -67,13 +66,15 @@ class Speakeasy(object):
       print "Bad metric"
       return
 
-    full_metric = "{0}/{1}".format(app_name, metric_name)
+    if app_name not in self.metrics:
+      self.init_app_metrics(app_name)
+
     if metric_type == 'GAUGE':
-      self.metrics['GAUGE'][full_metric].append(value)
-      pub_val = sum(self.metrics['GAUGE'][full_metric])/len(self.metrics['GAUGE'][full_metric])
+      self.metrics[app_name]['GAUGE'][metric].append(value)
+      pub_val = sum(self.metrics[app_name]['GAUGE'][metric])/len(self.metrics[app_name]['GAUGE'][metric])
     elif metric_type == 'COUNTER':
-      self.metrics['COUNTER'][full_metric] += value
-      pub_val = self.metrics['COUNTER'][full_metric]
+      self.metrics[app_name]['COUNTER'][metric] += value
+      pub_val = self.metrics[app_name]['COUNTER'][metric]
     else:
       print "Bad metric type"
       return
@@ -103,8 +104,7 @@ class Speakeasy(object):
     print "Stop polling"
 
   def emit_metrics(self):
-    """ Emit metrics on emission interval """
-    #time.sleep(self.emission_interval)
+    """ Send snapshot of metrics through emitter """
     while self.running:
       print "Emit metrics"
 
@@ -135,24 +135,33 @@ class Speakeasy(object):
     print "Stop emitting"
 
   def snapshot(self):
-    """ Return a snapshot of current metrics """
+    """
+    Return a snapshot of current metrics
+
+    [(app, metric, val, type, timestamp), ...]
+    """
     metrics = []
-    ss = {}
-    ss['COUNTER'] = copy.copy(self.metrics['COUNTER'])
-    ss['GAUGE'] = copy.copy(self.metrics['GAUGE'])
+    ss = copy.deepcopy(self.metrics)
 
-    for m, val in ss['COUNTER'].iteritems():
-      metrics.append((m, val, 'COUNTER', time.time()))
+    for app in ss:
+      for m, val in ss[app]['COUNTER'].iteritems():
+        metrics.append((app, m, val, 'COUNTER', time.time()))
 
-    for m, vals in ss['GAUGE'].iteritems():
-      if vals:
-        metrics.append((m, sum(vals) / float(len(vals)), 'GAUGE', time.time()))
+      for m, vals in ss[app]['GAUGE'].iteritems():
+        if vals:
+          metrics.append((app, m, sum(vals) / float(len(vals)), 'GAUGE', time.time()))
 
     return metrics
 
   def reset_metrics(self):
     """ Reset metrics for next interval """
-    self.metrics['GAUGE'] = collections.defaultdict(list)
+    for app in self.metrics:
+      self.metrics[app]['GAUGE'] = collections.defaultdict(list)
+
+  def init_app_metrics(self, app):
+    """ Setup initial metric structure for new app """
+    if app not in self.metrics:
+      self.metrics[app] = {'GAUGE': collections.defaultdict(list), 'COUNTER': collections.defaultdict(int)}
 
   def start(self):
     self.__start()

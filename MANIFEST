@@ -1,0 +1,6 @@
+setup.py
+bin/speakeasy
+speakeasy/__init__.py
+speakeasy/speakeasy.py
+speakeasy/emitter/__init__.py
+speakeasy/emitter/simple.py
