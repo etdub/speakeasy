@@ -70,11 +70,11 @@ class Speakeasy(object):
       self.init_app_metrics(app_name)
 
     if metric_type == 'GAUGE':
-      self.metrics[app_name]['GAUGE'][metric].append(value)
-      pub_val = sum(self.metrics[app_name]['GAUGE'][metric])/len(self.metrics[app_name]['GAUGE'][metric])
+      self.metrics[app_name]['GAUGE'][metric_name].append(value)
+      pub_val = sum(self.metrics[app_name]['GAUGE'][metric_name])/len(self.metrics[app_name]['GAUGE'][metric_name])
     elif metric_type == 'COUNTER':
-      self.metrics[app_name]['COUNTER'][metric] += value
-      pub_val = self.metrics[app_name]['COUNTER'][metric]
+      self.metrics[app_name]['COUNTER'][metric_name] += value
+      pub_val = self.metrics[app_name]['COUNTER'][metric_name]
     else:
       print "Bad metric type"
       return
@@ -189,8 +189,6 @@ def import_emitter(name, **kwargs):
   namespace = 'speakeasy.emitter.'
   if namespace not in name:
     name = namespace + name
-
-  print name
 
   try:
     emitter = __import__(name)
