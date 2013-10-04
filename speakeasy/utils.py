@@ -4,6 +4,9 @@ def percentile(values, percent):
     """
     Return percentile out of list of values
     """
+    if not values:
+      return
+
     k = (len(values)-1) * percent
     f = math.floor(k)
     c = math.ceil(k)

@@ -9,7 +9,7 @@ import time
 import ujson
 import zmq
 
-import speakeasy.utils
+import utils
 
 logger = logging.getLogger()
 
@@ -24,9 +24,10 @@ class Speakeasy(object):
         self.emission_interval = emission_interval
         self.hostname = socket.getfqdn()
         self.legacy = legacy
+        self.percentiles = [0.5, 0.75, 0.95, 0.99]
 
         # Setup legacy socket if needed
-        self.legacy_sock = None
+        self.legacy_socket = None
         if self.legacy:
             self.legacy_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
             self.legacy_socket.bind(self.legacy)
@@ -90,22 +91,31 @@ class Speakeasy(object):
         if app_name not in self.metrics:
             self.init_app_metrics(app_name)
 
+        pub_metrics = []
         if metric_type == 'GAUGE':
             self.metrics[app_name][metric_type][metric_name].append(value)
             # Publish the current running average
             pub_val = sum(self.metrics[app_name][metric_type][metric_name])/len(self.metrics[app_name][metric_type][metric_name])
+            pub_metrics.append((self.hostname, app_name, metric_name, metric_type, pub_val, time.time()))
+
         elif metric_type == 'PERCENTILE' or metric_type == 'HISTOGRAM':
             # Kill off the HISTOGRAM type!!
             self.metrics[app_name]['PERCENTILE'][metric_name].append(value)
-            pub_val = value
+            # Publish the current running percentiles
+            for p in self.percentiles:
+                pub_metrics.append((self.hostname, app, '{0}{1}_percentile'.format(m, int(p*100)), 'PERCENTILE', utils.percentile(vals, p), time.time()))
+
         elif metric_type == 'COUNTER':
             self.metrics[app_name][metric_type][metric_name] += value
             pub_val = self.metrics[app_name][metric_type][metric_name]
+            # Publish the running count
+            pub_metrics.append((self.hostname, app_name, metric_name, metric_type, pub_val, time.time()))
+
         else:
             print "Bad metric type"
             return
 
-        msg = ujson.dumps([self.hostname, app_name, metric_name, metric_type, pub_val, time.time()])
+        msg = ujson.dumps(pub_metrics)
         self.pub_socket.send(msg)
 
     def process_command(self, cmd):
@@ -194,8 +204,7 @@ class Speakeasy(object):
 
             for m, vals in ss[app]['PERCENTILE'].iteritems():
                 # Emit 50%, 75%, 95%, 99% as GAUGE
-                percentiles = [0.5, 0.75, 0.95, 0.99]
-                for p in percentiles:
+                for p in self.percentiles:
                     # Assume the metric name has a trailing separator to append the percentile to
                     metrics.append((app, '{0}{1}_percentile'.format(m, int(p*100)), utils.percentile(vals, p), 'GAUGE', time.time()))
 
