@@ -1,9 +1,21 @@
 #!/usr/bin/env python
 
 import argparse
+import logging
 from speakeasy.speakeasy import Speakeasy
 import time
 
+logger = logging.getLogger('speakeasy')
+
+def init_logger(verbose):
+    if verbose:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
 def main():
   parser = argparse.ArgumentParser(description='Run Speakeasy server')
@@ -21,17 +33,22 @@ def main():
           help='Frequency to emit data (seconds)')
   parser.add_argument('-l', '--legacy', required=False, type=str,
           help='Optional legacy socket to listen for incoming metrics')
+  parser.add_argument('-v', '--verbose', required=False, default=False, action='store_true',
+          help='Enable verbose logging')
 
   args = parser.parse_args()
 
+  init_logger(args.verbose)
+
+  logger.info('Start speakeasy')
   server = Speakeasy(args.metric_socket, args.cmd_port, args.pub_port, args.emitter, args.emitter_args, args.emission_interval, args.legacy)
   server.start()
 
   while True:
     try:
       time.sleep(1)
-    except (KeyboardInterrupt, Exception) as e:
-      print "Exception... exiting - {0}".format(e)
+    except (KeyboardInterrupt, Exception), e:
+      logger.warn("Exception... exiting - {0}".format(e))
       server.shutdown()
       break
 

@@ -1,9 +1,11 @@
 import collections
 import copy
 import logging
+import os
 import Queue
 import socket
 import sys
+import select
 import socket
 import threading
 import time
@@ -12,7 +14,7 @@ import zmq
 
 import utils
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 class Speakeasy(object):
     def __init__(self, metric_socket, cmd_port, pub_port, emitter_name, emitter_args=None,
@@ -31,6 +33,9 @@ class Speakeasy(object):
         # Setup legacy socket if needed
         self.legacy_socket = None
         if self.legacy:
+            if os.path.exists(self.legacy):
+                logger.warn('Remove existing legacy socket and recreating'.format(self.legacy))
+                os.remove(self.legacy)
             self.legacy_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
             self.legacy_socket.bind(self.legacy)
 
@@ -44,7 +49,7 @@ class Speakeasy(object):
         # Setup the emitter
         self.emitter = import_emitter(self.emitter_name, **self.emitter_args)
         if not self.emitter:
-            print "No emitter found"
+            logger.warn("No emitter found")
 
         self.context = zmq.Context()
 
@@ -75,7 +80,7 @@ class Speakeasy(object):
         self.metrics = {}
 
     def process_metrics_queue(self):
-        print "Start processing metrics queue"
+        logger.info("Start processing metrics queue")
         while self.running:
             try:
                 metric, legacy = self.metrics_queue.get(block=False)
@@ -87,7 +92,7 @@ class Speakeasy(object):
 
     def process_metric(self, metric, legacy=False):
         """ Process metrics and store and publish """
-        print "Received metric: {0}".format(metric)
+        logger.debug("Received metric: {0}".format(metric))
         if legacy:
             # Legacy format for metrics is slightly different...
             # Index them under same "app name"
@@ -99,7 +104,7 @@ class Speakeasy(object):
         try:
             value = float(value)
         except ValueError:
-            print "Bad metric"
+            logger.warn("Failed to cast metric value to float - {0}".format(metric))
             return
 
         if app_name not in self.metrics:
@@ -129,7 +134,7 @@ class Speakeasy(object):
             pub_metrics.append((self.hostname, app_name, metric_name, metric_type, pub_val, time.time()))
 
         else:
-            print "Bad metric type"
+            logger.warn("Unrecognized metric type - {0}".format(metric))
             return
 
         msg = ujson.dumps(pub_metrics)
@@ -142,7 +147,7 @@ class Speakeasy(object):
 
     def poll_sockets(self):
         """ Poll metrics socket and cmd socket for data """
-        print "Start polling"
+        logger.info("Start polling")
         while self.running:
             socks = dict(self.poller.poll(1000))
             if self.recv_socket in socks and socks[self.recv_socket] == zmq.POLLIN:
@@ -158,29 +163,23 @@ class Speakeasy(object):
             if self.legacy_socket:
                 # Process legacy format
                 try:
-                    r, w, x = select.select([self.legacy_socket], [], [])
+                    r, w, x = select.select([self.legacy_socket], [], [], 1)
                     if r:
                         data, addr = self.legacy_socket.recvfrom(8192)
-                        try:
-                            self.metrics_queue.put((data, True))
-                        except Exception, e:
-                            # Pass if data is bad
-                            pass
-                except socket.error:
-                    pass
+                        self.metrics_queue.put((data, True))
+                except socket.error, e:
+                    logger.error('Error on legacy socket - {0}'.format(e))
 
-        print "Stop polling"
+        logger.info("Stop polling")
 
     def emit_metrics(self):
         """ Send snapshot of metrics through emitter """
         while self.running:
-            print "Emit metrics"
+            logger.info("Emit metrics")
 
             # Grab "this is what the world looks like now" snapshot
             metrics_ss = self.snapshot()
 
-            # Reset metrics
-            self.reset_metrics()
 
             e_start = time.time()
             if self.emitter:
@@ -200,7 +199,7 @@ class Speakeasy(object):
                         else:
                             time.sleep(1)
 
-        print "Stop emitting"
+        logger.info("Stop emitting")
 
     def snapshot(self):
         """
@@ -210,6 +209,9 @@ class Speakeasy(object):
         """
         metrics = []
         ss = copy.deepcopy(self.metrics)
+
+        # Reset metrics
+        self.reset_metrics()
 
         for app in ss:
             for m, val in ss[app]['COUNTER'].iteritems():
@@ -254,18 +256,27 @@ class Speakeasy(object):
 
     def __stop(self):
         self.running = False
-        print "Shutting down"
+        logger.info("Shutting down")
         if self.poll_thread:
-            print "Waiting for poll thread to stop..."
+            logger.info("Waiting for poll thread to stop...")
             self.poll_thread.join()
 
         if self.emit_thread:
-            print "Waiting for emit thread to stop..."
+            logger.info("Waiting for emit thread to stop...")
             self.emit_thread.join()
 
         if self.process_thread:
-            print "Waiting for process thread to stop..."
+            logger.info("Waiting for process thread to stop...")
             self.process_thread.join()
+
+        self.__cleanup()
+
+    def __cleanup(self):
+        if self.legacy:
+            if os.path.exists(self.legacy):
+                logger.info('Cleaning up legacy socket')
+                os.remove(self.legacy)
+
 
 def import_emitter(name, **kwargs):
     namespace = 'speakeasy.emitter.'
@@ -283,7 +294,7 @@ def import_emitter(name, **kwargs):
     return module.Emitter(**kwargs)
 
 if __name__ == '__main__':
-    server = Speakeasy('/var/tmp/metric_socket', '5001', '5002', 'simple', ['filename=/var/tmp/metrics.out'], 60)
+    server = Speakeasy('/var/tmp/metric_socket', '5001', '5002', 'simple', ['filename=/var/tmp/metrics.out'], 60, '/var/tmp/metric_socket2')
     server.start()
     while True:
         try:
