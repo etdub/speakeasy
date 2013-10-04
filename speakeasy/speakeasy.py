@@ -214,11 +214,13 @@ class Speakeasy(object):
         """ Reset metrics for next interval """
         for app in self.metrics:
             self.metrics[app]['GAUGE'] = collections.defaultdict(list)
+            self.metrics[app]['PERCENTILE'] = collections.defaultdict(list)
 
     def init_app_metrics(self, app):
         """ Setup initial metric structure for new app """
         if app not in self.metrics:
-            self.metrics[app] = {'GAUGE': collections.defaultdict(list), 'COUNTER': collections.defaultdict(int)}
+            self.metrics[app] = {'GAUGE': collections.defaultdict(list), 'COUNTER': collections.defaultdict(int),
+                    'PERCENTILE': collections.defaultdict(list)}
 
     def start(self):
         self.__start()
