@@ -8,7 +8,7 @@ import time
 def main():
   parser = argparse.ArgumentParser(description='Run Speakeasy server')
   parser.add_argument('-ms', '--metric-socket', required=True,
-    help='Metric socket to listen on')
+          help='Metric socket to listen on')
   parser.add_argument('-cp', '--cmd-port', required=True,
           help='Port to receive commands on')
   parser.add_argument('-pp', '--pub-port', required=True,
@@ -19,10 +19,12 @@ def main():
           help='Arguments to be passed to emitter module')
   parser.add_argument('-ei', '--emission-interval', default=60, required=False, type=float,
           help='Frequency to emit data (seconds)')
+  parser.add_argument('-l', '--legacy', required=False, type=str,
+          help='Optional legacy socket to listen for incoming metrics')
 
   args = parser.parse_args()
 
-  server = Speakeasy(args.metric_socket, args.cmd_port, args.pub_port, args.emitter, args.emitter_args, args.emission_interval)
+  server = Speakeasy(args.metric_socket, args.cmd_port, args.pub_port, args.emitter, args.emitter_args, args.emission_interval, args.legacy)
   server.start()
 
   while True:

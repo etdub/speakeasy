@@ -1,14 +1,21 @@
 import collections
 import copy
+import logging
 import socket
 import sys
+import socket
 import threading
 import time
 import ujson
 import zmq
 
+import speakeasy.utils
+
+logger = logging.getLogger()
+
 class Speakeasy(object):
-  def __init__(self, metric_socket, cmd_port, pub_port, emitter_name, emitter_args=None, emission_interval=60):
+  def __init__(self, metric_socket, cmd_port, pub_port, emitter_name, emitter_args=None,
+      emission_interval=60, legacy=None):
     """ Aggregate metrics and emit. Also support live data querying. """
     self.metric_socket = metric_socket
     self.pub_port = pub_port
@@ -16,6 +23,13 @@ class Speakeasy(object):
     self.emitter_name = emitter_name
     self.emission_interval = emission_interval
     self.hostname = socket.getfqdn()
+    self.legacy = legacy
+
+    # Setup legacy socket if needed
+    self.legacy_sock = None
+    if self.legacy:
+      self.legacy_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+      self.legacy_socket.bind(self.legacy)
 
     # Process the args for emitter
     self.emitter_args = {}
@@ -56,10 +70,17 @@ class Speakeasy(object):
     # Index metrics by appname
     self.metrics = {}
 
-  def process_metric(self, metric):
+  def process_metric(self, metric, legacy=False):
     """ Process metrics and store and publish """
     print "Received metric: {0}".format(metric)
-    app_name, metric_name, metric_type, value = metric
+    if legacy:
+      # Legacy format for metrics is slightly different...
+      # Index them under same "app name"
+      app_name = '__LEGACY__'
+      metric_name, value, metric_type = metric
+    else:
+      app_name, metric_name, metric_type, value = metric
+
     try:
       value = float(value)
     except ValueError:
@@ -70,11 +91,16 @@ class Speakeasy(object):
       self.init_app_metrics(app_name)
 
     if metric_type == 'GAUGE':
-      self.metrics[app_name]['GAUGE'][metric_name].append(value)
-      pub_val = sum(self.metrics[app_name]['GAUGE'][metric_name])/len(self.metrics[app_name]['GAUGE'][metric_name])
+      self.metrics[app_name][metric_type][metric_name].append(value)
+      # Publish the current running average
+      pub_val = sum(self.metrics[app_name][metric_type][metric_name])/len(self.metrics[app_name][metric_type][metric_name])
+    elif metric_type == 'PERCENTILE' or metric_type == 'HISTOGRAM':
+      # Kill off the HISTOGRAM type!!
+      self.metrics[app_name]['PERCENTILE'][metric_name].append(value)
+      pub_val = value
     elif metric_type == 'COUNTER':
-      self.metrics[app_name]['COUNTER'][metric_name] += value
-      pub_val = self.metrics[app_name]['COUNTER'][metric_name]
+      self.metrics[app_name][metric_type][metric_name] += value
+      pub_val = self.metrics[app_name][metric_type][metric_name]
     else:
       print "Bad metric type"
       return
@@ -84,6 +110,7 @@ class Speakeasy(object):
 
   def process_command(self, cmd):
     """ Process command and reply """
+    # TODO: Do something here
     pass
 
   def poll_sockets(self):
@@ -100,6 +127,20 @@ class Speakeasy(object):
         cmd = ujson.loads(self.cmd_socket.recv())
         # Process command
         self.process_command(cmd)
+
+      if self.legacy_socket:
+        # Process legacy format
+        try:
+          r, w, x = select.select([self.legacy_socket], [], [])
+          if r:
+            data, addr = self.legacy_socket.recvfrom(8192)
+            try:
+              self.process_metric(data, legacy=True)
+            except Exception, e:
+              # Pass if data is bad
+              pass
+        except socket.error:
+          pass
 
     print "Stop polling"
 
@@ -150,6 +191,13 @@ class Speakeasy(object):
       for m, vals in ss[app]['GAUGE'].iteritems():
         if vals:
           metrics.append((app, m, sum(vals) / float(len(vals)), 'GAUGE', time.time()))
+
+      for m, vals in ss[app]['PERCENTILE'].iteritems():
+        # Emit 50%, 75%, 95%, 99% as GAUGE
+        percentiles = [0.5, 0.75, 0.95, 0.99]
+        for p in percentiles:
+          # Assume the metric name has a trailing separator to append the percentile to
+          metrics.append((app, '{0}{1}_percentile'.format(m, int(p*100)), utils.percentile(vals, p), 'GAUGE', time.time()))
 
     return metrics
 
