@@ -1,6 +1,7 @@
 import collections
 import copy
 import logging
+import Queue
 import socket
 import sys
 import socket
@@ -25,6 +26,7 @@ class Speakeasy(object):
         self.hostname = socket.getfqdn()
         self.legacy = legacy
         self.percentiles = [0.5, 0.75, 0.95, 0.99]
+        self.metrics_queue = Queue.Queue()
 
         # Setup legacy socket if needed
         self.legacy_socket = None
@@ -66,10 +68,22 @@ class Speakeasy(object):
         # Setup poll and emit thread
         self.poll_thread = threading.Thread(target=self.poll_sockets, args=())
         self.emit_thread = threading.Thread(target=self.emit_metrics, args=())
+        self.process_thread = threading.Thread(target=self.process_metrics_queue, args=())
 
         # Init metrics
         # Index metrics by appname
         self.metrics = {}
+
+    def process_metrics_queue(self):
+        print "Start processing metrics queue"
+        while self.running:
+            try:
+                metric, legacy = self.metrics_queue.get(block=False)
+            except Queue.Empty:
+                continue
+
+            self.process_metric(metric, legacy=legacy)
+            self.metrics_queue.task_done()
 
     def process_metric(self, metric, legacy=False):
         """ Process metrics and store and publish """
@@ -133,8 +147,8 @@ class Speakeasy(object):
             socks = dict(self.poller.poll(1000))
             if self.recv_socket in socks and socks[self.recv_socket] == zmq.POLLIN:
                 metric = ujson.loads(self.recv_socket.recv())
-                # Process metric
-                self.process_metric(metric)
+                # Put metric on metrics queue
+                self.metrics_queue.put((metric, False))
 
             if self.cmd_socket in socks and socks[self.cmd_socket] == zmq.POLLIN:
                 cmd = ujson.loads(self.cmd_socket.recv())
@@ -148,7 +162,7 @@ class Speakeasy(object):
                     if r:
                         data, addr = self.legacy_socket.recvfrom(8192)
                         try:
-                            self.process_metric(data, legacy=True)
+                            self.metrics_queue.put((data, True))
                         except Exception, e:
                             # Pass if data is bad
                             pass
@@ -236,6 +250,7 @@ class Speakeasy(object):
         self.running = True
         self.poll_thread.start()
         self.emit_thread.start()
+        self.process_thread.start()
 
     def __stop(self):
         self.running = False
@@ -247,6 +262,10 @@ class Speakeasy(object):
         if self.emit_thread:
             print "Waiting for emit thread to stop..."
             self.emit_thread.join()
+
+        if self.process_thread:
+            print "Waiting for process thread to stop..."
+            self.process_thread.join()
 
 def import_emitter(name, **kwargs):
     namespace = 'speakeasy.emitter.'
