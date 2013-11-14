@@ -97,7 +97,7 @@ class Speakeasy(object):
             # Legacy format for metrics is slightly different...
             # Index them under same "app name"
             app_name = '__LEGACY__'
-            metric_name, value, metric_type = metric
+            metric_name, value, metric_type = metric.split('|')
         else:
             app_name, metric_name, metric_type, value = metric
 
