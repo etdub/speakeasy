@@ -17,7 +17,7 @@ import utils
 logger = logging.getLogger(__name__)
 
 class Speakeasy(object):
-    def __init__(self, metric_socket, cmd_port, pub_port, emitter_name, emitter_args=None,
+    def __init__(self, host, metric_socket, cmd_port, pub_port, emitter_name, emitter_args=None,
             emission_interval=60, legacy=None):
         """ Aggregate metrics and emit. Also support live data querying. """
         self.metric_socket = metric_socket
@@ -25,7 +25,7 @@ class Speakeasy(object):
         self.cmd_port = cmd_port
         self.emitter_name = emitter_name
         self.emission_interval = emission_interval
-        self.hostname = socket.getfqdn()
+        self.hostname = host
         self.legacy = legacy
         self.percentiles = [0.5, 0.75, 0.95, 0.99]
         self.metrics_queue = Queue.Queue()
@@ -85,6 +85,7 @@ class Speakeasy(object):
             try:
                 metric, legacy = self.metrics_queue.get(block=False)
             except Queue.Empty:
+                time.sleep(0.01)
                 continue
 
             self.process_metric(metric, legacy=legacy)
