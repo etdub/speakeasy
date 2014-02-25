@@ -1,4 +1,4 @@
-speakeasy
+speakeasy [![Build Status](https://travis-ci.org/etdub/speakeasy.png?branch=master)](https://travis-ci.org/etdub/speakeasy)
 =========
 
 Speakeasy is a metrics aggregation server that listens for data locally over a named pipe. Received data is periodically
