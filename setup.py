@@ -1,9 +1,15 @@
-from distutils.core import setup
+from setuptools import setup
 
 setup(name='speakeasy',
-    version='1.0.1',
+    version='1.0.2',
     description='Metrics aggregation server',
     author='Eric Wong',
+
+    install_requires = [
+        'argparse',
+        'pyzmq',
+        'ujson',
+    ],
     packages=['speakeasy', 'speakeasy.emitter'],
     scripts=['bin/speakeasy'],
     )
