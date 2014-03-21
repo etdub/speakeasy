@@ -219,10 +219,18 @@ class Speakeasy(object):
                 metrics.append((app, m, val, 'COUNTER', time.time()))
 
             for m, vals in ss[app]['GAUGE'].iteritems():
+                if len(vals) == 0:
+                    logger.debug("No values for metric: {0}".format(m))
+                    continue
+
                 if vals:
                     metrics.append((app, m, sum(vals) / float(len(vals)), 'GAUGE', time.time()))
 
             for m, vals in ss[app]['PERCENTILE'].iteritems():
+                if len(vals) == 0:
+                    logger.debug("No values for metric: {0}".format(m))
+                    continue
+
                 # Emit 50%, 75%, 95%, 99% as GAUGE
                 for p in self.percentiles:
                     # Assume the metric name has a trailing separator to append the percentile to
