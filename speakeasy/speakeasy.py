@@ -55,6 +55,8 @@ class Speakeasy(object):
 
         # Listen for metrics
         self.recv_socket = self.context.socket(zmq.PULL)
+        # Increase the HWM to 10k msgs
+        self.recv_socket.set_hwm(10000)
         self.recv_socket.bind('ipc://{0}'.format(self.metric_socket))
 
         # Listen for commands
