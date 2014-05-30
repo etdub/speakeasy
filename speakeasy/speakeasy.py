@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class Speakeasy(object):
     def __init__(self, host, metric_socket, cmd_port, pub_port, emitter_name, emitter_args=None,
-            emission_interval=60, legacy=None):
+            emission_interval=60, legacy=None, hwm=20000):
         """ Aggregate metrics and emit. Also support live data querying. """
         self.metric_socket = metric_socket
         self.pub_port = pub_port
@@ -55,8 +55,8 @@ class Speakeasy(object):
 
         # Listen for metrics
         self.recv_socket = self.context.socket(zmq.PULL)
-        # Increase the HWM to 10k msgs
-        self.recv_socket.set_hwm(5000)
+        # Increase the HWM
+        self.recv_socket.set_hwm(hwm)
         self.recv_socket.bind('ipc://{0}'.format(self.metric_socket))
 
         # Listen for commands
