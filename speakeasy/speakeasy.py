@@ -3,10 +3,9 @@ import copy
 import logging
 import os
 import Queue
-import socket
-import sys
 import select
 import socket
+import sys
 import threading
 import time
 import ujson
@@ -15,6 +14,7 @@ import zmq
 import utils
 
 logger = logging.getLogger(__name__)
+
 
 class Speakeasy(object):
     def __init__(self, host, metric_socket, cmd_port, pub_port, emitter_name, emitter_args=None,
@@ -43,7 +43,7 @@ class Speakeasy(object):
         self.emitter_args = {}
         if emitter_args:
                 for arg in emitter_args:
-                    k,v = arg.split('=')
+                    k, v = arg.split('=')
                     self.emitter_args[k] = v
 
         # Setup the emitter
@@ -56,7 +56,7 @@ class Speakeasy(object):
         # Listen for metrics
         self.recv_socket = self.context.socket(zmq.PULL)
         # Increase the HWM to 10k msgs
-        self.recv_socket.set_hwm(10000)
+        self.recv_socket.set_hwm(5000)
         self.recv_socket.bind('ipc://{0}'.format(self.metric_socket))
 
         # Listen for commands
@@ -90,7 +90,11 @@ class Speakeasy(object):
                 time.sleep(0.01)
                 continue
 
-            self.process_metric(metric, legacy=legacy)
+            try:
+              self.process_metric(metric, legacy=legacy)
+            except Exception as e:
+              logger.warn("Failed to process metric: {0}".format(e))
+
             self.metrics_queue.task_done()
 
     def process_metric(self, metric, legacy=False):
@@ -127,8 +131,10 @@ class Speakeasy(object):
             # Publish the current running percentiles
             for p in self.percentiles:
                 pub_metrics.append((self.hostname, app_name, '{0}{1}_percentile'.format(metric_name, int(p*100)), 'GAUGE', utils.percentile(self.metrics[app_name][metric_type][metric_name], p), time.time()))
-            avg = sum(self.metrics[app_name][metric_type][metric_name])/len(self.metrics[app_name][metric_type][metric_name])
-            pub_metrics.append((self.hostname, app_name, '{0}average'.format(metric_name), metric_type, avg, time.time()))
+            dp_len = len(self.metrics[app_name][metric_type][metric_name])
+            if dp_len > 0:
+              avg = sum(self.metrics[app_name][metric_type][metric_name])/dp_len
+              pub_metrics.append((self.hostname, app_name, '{0}average'.format(metric_name), metric_type, avg, time.time()))
 
         elif metric_type == 'COUNTER':
             self.metrics[app_name][metric_type][metric_name] += value
@@ -182,7 +188,6 @@ class Speakeasy(object):
 
             # Grab "this is what the world looks like now" snapshot
             metrics_ss = self.snapshot()
-
 
             e_start = time.time()
             if self.emitter:
