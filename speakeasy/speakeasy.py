@@ -29,6 +29,7 @@ class Speakeasy(object):
         self.legacy = legacy
         self.percentiles = [0.5, 0.75, 0.95, 0.99]
         self.metrics_queue = Queue.Queue()
+        self.metrics_lock = threading.RLock()
 
         # Setup legacy socket if needed
         self.legacy_socket = None
@@ -119,7 +120,9 @@ class Speakeasy(object):
 
         pub_metrics = []
         if metric_type == 'GAUGE':
-            self.metrics[app_name][metric_type][metric_name].append(value)
+
+            with self.metrics_lock:
+                self.metrics[app_name][metric_type][metric_name].append(value)
             # Publish the current running average
             pub_val = sum(self.metrics[app_name][metric_type][metric_name])/len(self.metrics[app_name][metric_type][metric_name])
             pub_metrics.append((self.hostname, app_name, metric_name, metric_type, pub_val, time.time()))
@@ -127,7 +130,8 @@ class Speakeasy(object):
         elif metric_type == 'PERCENTILE' or metric_type == 'HISTOGRAM':
             # Kill off the HISTOGRAM type!!
             metric_type = 'PERCENTILE'
-            self.metrics[app_name][metric_type][metric_name].append(value)
+            with self.metrics_lock:
+                self.metrics[app_name][metric_type][metric_name].append(value)
             # Publish the current running percentiles
             for p in self.percentiles:
                 pub_metrics.append((self.hostname, app_name, '{0}{1}_percentile'.format(metric_name, int(p*100)), 'GAUGE', utils.percentile(self.metrics[app_name][metric_type][metric_name], p), time.time()))
@@ -137,7 +141,8 @@ class Speakeasy(object):
               pub_metrics.append((self.hostname, app_name, '{0}average'.format(metric_name), metric_type, avg, time.time()))
 
         elif metric_type == 'COUNTER':
-            self.metrics[app_name][metric_type][metric_name] += value
+            with self.metrics_lock:
+                self.metrics[app_name][metric_type][metric_name] += value
             pub_val = self.metrics[app_name][metric_type][metric_name]
             # Publish the running count
             pub_metrics.append((self.hostname, app_name, metric_name, metric_type, pub_val, time.time()))
@@ -216,7 +221,9 @@ class Speakeasy(object):
         [(app, metric, val, type, timestamp), ...]
         """
         metrics = []
-        ss = copy.deepcopy(self.metrics)
+        with self.metrics_lock:
+            logger.debug("Inside of metrics lock")
+            ss = copy.deepcopy(self.metrics)
 
         # Reset metrics
         self.reset_metrics()
@@ -249,14 +256,16 @@ class Speakeasy(object):
     def reset_metrics(self):
         """ Reset metrics for next interval """
         for app in self.metrics:
-            self.metrics[app]['GAUGE'] = collections.defaultdict(list)
-            self.metrics[app]['PERCENTILE'] = collections.defaultdict(list)
+            with self.metrics_lock:
+                self.metrics[app]['GAUGE'] = collections.defaultdict(list)
+                self.metrics[app]['PERCENTILE'] = collections.defaultdict(list)
 
     def init_app_metrics(self, app):
         """ Setup initial metric structure for new app """
         if app not in self.metrics:
-            self.metrics[app] = {'GAUGE': collections.defaultdict(list), 'COUNTER': collections.defaultdict(int),
-                    'PERCENTILE': collections.defaultdict(list)}
+            with self.metrics_lock:
+                self.metrics[app] = {'GAUGE': collections.defaultdict(list), 'COUNTER': collections.defaultdict(int),
+                        'PERCENTILE': collections.defaultdict(list)}
 
     def start(self):
         self.__start()
