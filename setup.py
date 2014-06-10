@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='speakeasy',
-    version='1.0.6',
+    version='1.0.7',
     description='Metrics aggregation server',
     author='Eric Wong',
 
