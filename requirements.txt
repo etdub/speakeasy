@@ -3,3 +3,4 @@ nose
 pyzmq
 ujson
 unittest2
+mock
