@@ -322,7 +322,9 @@ def import_emitter(name, **kwargs):
     return module.Emitter(**kwargs)
 
 if __name__ == '__main__':
-    server = Speakeasy('/var/tmp/metric_socket', '5001', '5002', 'simple', ['filename=/var/tmp/metrics.out'], 60, '/var/tmp/metric_socket2')
+    server = Speakeasy('0.0.0.0', '/var/tmp/metric_socket', '5001', '5002',
+                       'simple', ['filename=/var/tmp/metrics.out'], 60,
+                       '/var/tmp/metric_socket2')
     server.start()
     while True:
         try:
