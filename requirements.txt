@@ -2,3 +2,4 @@ argparse
 nose
 pyzmq
 ujson
+unittest2
