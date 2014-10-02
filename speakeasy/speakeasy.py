@@ -150,7 +150,7 @@ class Speakeasy(object):
               avg = sum(dp)/dp_len
               pub_metrics.append((self.hostname, app_name,
                                   '{0}average'.format(metric_name),
-                                  metric_type, avg, time.time()))
+                                  'GAUGE', avg, time.time()))
 
         elif metric_type == 'COUNTER':
             with self.metrics_lock:
