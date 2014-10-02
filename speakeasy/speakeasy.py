@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import ujson
+import bisect
 import zmq
 
 import utils
@@ -39,6 +40,7 @@ class Speakeasy(object):
                 os.remove(self.legacy)
             self.legacy_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
             self.legacy_socket.bind(self.legacy)
+            self.legacy_socket_fno = self.legacy_socket.fileno()
 
         # Process the args for emitter
         self.emitter_args = {}
@@ -72,6 +74,7 @@ class Speakeasy(object):
         self.poller = zmq.Poller()
         self.poller.register(self.recv_socket, zmq.POLLIN)
         self.poller.register(self.cmd_socket, zmq.POLLIN)
+        self.poller.register(self.legacy_socket, zmq.POLLIN)
 
         # Setup poll and emit thread
         self.poll_thread = threading.Thread(target=self.poll_sockets, args=())
@@ -118,34 +121,44 @@ class Speakeasy(object):
         if app_name not in self.metrics:
             self.init_app_metrics(app_name)
 
+        dp = None
         pub_metrics = []
         if metric_type == 'GAUGE':
-
             with self.metrics_lock:
-                self.metrics[app_name][metric_type][metric_name].append(value)
+                dp = self.metrics[app_name][metric_type][metric_name]
+                dp.append(value)
             # Publish the current running average
-            pub_val = sum(self.metrics[app_name][metric_type][metric_name])/len(self.metrics[app_name][metric_type][metric_name])
-            pub_metrics.append((self.hostname, app_name, metric_name, metric_type, pub_val, time.time()))
+            pub_val = sum(dp)/len(dp)
+            pub_metrics.append((self.hostname, app_name, metric_name,
+                                metric_type, pub_val, time.time()))
 
         elif metric_type == 'PERCENTILE' or metric_type == 'HISTOGRAM':
             # Kill off the HISTOGRAM type!!
             metric_type = 'PERCENTILE'
             with self.metrics_lock:
-                self.metrics[app_name][metric_type][metric_name].append(value)
+                dp = self.metrics[app_name][metric_type][metric_name]
+                # dp must be sorted before passing to utils.percentile
+                bisect.insort(dp, value)
             # Publish the current running percentiles
             for p in self.percentiles:
-                pub_metrics.append((self.hostname, app_name, '{0}{1}_percentile'.format(metric_name, int(p*100)), 'GAUGE', utils.percentile(self.metrics[app_name][metric_type][metric_name], p), time.time()))
-            dp_len = len(self.metrics[app_name][metric_type][metric_name])
+                pub_metrics.append((self.hostname, app_name,
+                                    '{0}{1}_percentile'.format(metric_name, int(p*100)),
+                                    'GAUGE', utils.percentile(dp, p),
+                                    time.time()))
+            dp_len = len(dp)
             if dp_len > 0:
-              avg = sum(self.metrics[app_name][metric_type][metric_name])/dp_len
-              pub_metrics.append((self.hostname, app_name, '{0}average'.format(metric_name), metric_type, avg, time.time()))
+              avg = sum(dp)/dp_len
+              pub_metrics.append((self.hostname, app_name,
+                                  '{0}average'.format(metric_name),
+                                  'GAUGE', avg, time.time()))
 
         elif metric_type == 'COUNTER':
             with self.metrics_lock:
                 self.metrics[app_name][metric_type][metric_name] += value
             pub_val = self.metrics[app_name][metric_type][metric_name]
             # Publish the running count
-            pub_metrics.append((self.hostname, app_name, metric_name, metric_type, pub_val, time.time()))
+            pub_metrics.append((self.hostname, app_name, metric_name,
+                                metric_type, pub_val, time.time()))
 
         else:
             logger.warn("Unrecognized metric type - {0}".format(metric))
@@ -164,7 +177,7 @@ class Speakeasy(object):
         logger.info("Start polling")
         while self.running:
             socks = dict(self.poller.poll(1000))
-            if self.recv_socket in socks and socks[self.recv_socket] == zmq.POLLIN:
+            if socks.get(self.recv_socket) == zmq.POLLIN:
                 try:
                     metric = ujson.loads(self.recv_socket.recv())
                     # Put metric on metrics queue
@@ -172,18 +185,16 @@ class Speakeasy(object):
                 except ValueError as e:
                     logger.warn("Error receving metric: {0}".format(e))
 
-            if self.cmd_socket in socks and socks[self.cmd_socket] == zmq.POLLIN:
+            if socks.get(self.cmd_socket) == zmq.POLLIN:
                 cmd = ujson.loads(self.cmd_socket.recv())
                 # Process command
                 self.process_command(cmd)
 
-            if self.legacy_socket:
+            if socks.get(self.legacy_socket_fno) == zmq.POLLIN:
                 # Process legacy format
                 try:
-                    r, w, x = select.select([self.legacy_socket], [], [], 1)
-                    if r:
-                        data, addr = self.legacy_socket.recvfrom(8192)
-                        self.metrics_queue.put((data, True))
+                    data, addr = self.legacy_socket.recvfrom(8192)
+                    self.metrics_queue.put((data, True))
                 except socket.error, e:
                     logger.error('Error on legacy socket - {0}'.format(e))
 
@@ -241,7 +252,8 @@ class Speakeasy(object):
                     continue
 
                 if vals:
-                    metrics.append((app, m, sum(vals) / float(len(vals)), 'GAUGE', time.time()))
+                    metrics.append((app, m, sum(vals) / float(len(vals)),
+                                    'GAUGE', time.time()))
 
             for m, vals in ss[app]['PERCENTILE'].iteritems():
                 if len(vals) == 0:
@@ -250,10 +262,12 @@ class Speakeasy(object):
 
                 # Emit 50%, 75%, 95%, 99% as GAUGE
                 for p in self.percentiles:
-                    # Assume the metric name has a trailing separator to append the percentile to
-                    metrics.append((app, '{0}{1}_percentile'.format(m, int(p*100)), utils.percentile(vals, p), 'GAUGE', time.time()))
-                metrics.append((app, '{0}average'.format(m), sum(vals) / float(len(vals)), 'GAUGE', time.time()))
-
+                    # Assume the metric name has a trailing separator to append
+                    # the percentile to
+                    metrics.append((app, '{0}{1}_percentile'.format(m, int(p*100)),
+                                    utils.percentile(vals, p), 'GAUGE', time.time()))
+                metrics.append((app, '{0}average'.format(m),
+                                sum(vals) / float(len(vals)), 'GAUGE', time.time()))
         return metrics
 
     def reset_metrics(self):
@@ -267,8 +281,11 @@ class Speakeasy(object):
         """ Setup initial metric structure for new app """
         if app not in self.metrics:
             with self.metrics_lock:
-                self.metrics[app] = {'GAUGE': collections.defaultdict(list), 'COUNTER': collections.defaultdict(int),
-                        'PERCENTILE': collections.defaultdict(list)}
+                self.metrics[app] = {
+                  'GAUGE': collections.defaultdict(list),
+                  'COUNTER': collections.defaultdict(int),
+                  'PERCENTILE': collections.defaultdict(list)
+                }
 
     def start(self):
         self.__start()
@@ -322,7 +339,9 @@ def import_emitter(name, **kwargs):
     return module.Emitter(**kwargs)
 
 if __name__ == '__main__':
-    server = Speakeasy('/var/tmp/metric_socket', '5001', '5002', 'simple', ['filename=/var/tmp/metrics.out'], 60, '/var/tmp/metric_socket2')
+    server = Speakeasy('0.0.0.0', '/var/tmp/metric_socket', '5001', '5002',
+                       'simple', ['filename=/var/tmp/metrics.out'], 60,
+                       '/var/tmp/metric_socket2')
     server.start()
     while True:
         try:
