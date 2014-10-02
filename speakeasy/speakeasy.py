@@ -127,7 +127,8 @@ class Speakeasy(object):
                 self.metrics[app_name][metric_type][metric_name].append(value)
             # Publish the current running average
             pub_val = sum(self.metrics[app_name][metric_type][metric_name])/len(self.metrics[app_name][metric_type][metric_name])
-            pub_metrics.append((self.hostname, app_name, metric_name, metric_type, pub_val, time.time()))
+            pub_metrics.append((self.hostname, app_name, metric_name,
+                                metric_type, pub_val, time.time()))
 
         elif metric_type == 'PERCENTILE' or metric_type == 'HISTOGRAM':
             # Kill off the HISTOGRAM type!!
@@ -143,14 +144,17 @@ class Speakeasy(object):
             dp_len = len(self.metrics[app_name][metric_type][metric_name])
             if dp_len > 0:
               avg = sum(self.metrics[app_name][metric_type][metric_name])/dp_len
-              pub_metrics.append((self.hostname, app_name, '{0}average'.format(metric_name), metric_type, avg, time.time()))
+              pub_metrics.append((self.hostname, app_name,
+                                  '{0}average'.format(metric_name),
+                                  metric_type, avg, time.time()))
 
         elif metric_type == 'COUNTER':
             with self.metrics_lock:
                 self.metrics[app_name][metric_type][metric_name] += value
             pub_val = self.metrics[app_name][metric_type][metric_name]
             # Publish the running count
-            pub_metrics.append((self.hostname, app_name, metric_name, metric_type, pub_val, time.time()))
+            pub_metrics.append((self.hostname, app_name, metric_name,
+                                metric_type, pub_val, time.time()))
 
         else:
             logger.warn("Unrecognized metric type - {0}".format(metric))
@@ -244,7 +248,8 @@ class Speakeasy(object):
                     continue
 
                 if vals:
-                    metrics.append((app, m, sum(vals) / float(len(vals)), 'GAUGE', time.time()))
+                    metrics.append((app, m, sum(vals) / float(len(vals)),
+                                    'GAUGE', time.time()))
 
             for m, vals in ss[app]['PERCENTILE'].iteritems():
                 if len(vals) == 0:
@@ -253,10 +258,12 @@ class Speakeasy(object):
 
                 # Emit 50%, 75%, 95%, 99% as GAUGE
                 for p in self.percentiles:
-                    # Assume the metric name has a trailing separator to append the percentile to
-                    metrics.append((app, '{0}{1}_percentile'.format(m, int(p*100)), utils.percentile(vals, p), 'GAUGE', time.time()))
-                metrics.append((app, '{0}average'.format(m), sum(vals) / float(len(vals)), 'GAUGE', time.time()))
-
+                    # Assume the metric name has a trailing separator to append
+                    # the percentile to
+                    metrics.append((app, '{0}{1}_percentile'.format(m, int(p*100)),
+                                    utils.percentile(vals, p), 'GAUGE', time.time()))
+                metrics.append((app, '{0}average'.format(m),
+                                sum(vals) / float(len(vals)), 'GAUGE', time.time()))
         return metrics
 
     def reset_metrics(self):
@@ -270,8 +277,11 @@ class Speakeasy(object):
         """ Setup initial metric structure for new app """
         if app not in self.metrics:
             with self.metrics_lock:
-                self.metrics[app] = {'GAUGE': collections.defaultdict(list), 'COUNTER': collections.defaultdict(int),
-                        'PERCENTILE': collections.defaultdict(list)}
+                self.metrics[app] = {
+                  'GAUGE': collections.defaultdict(list),
+                  'COUNTER': collections.defaultdict(int),
+                  'PERCENTILE': collections.defaultdict(list)
+                }
 
     def start(self):
         self.__start()
