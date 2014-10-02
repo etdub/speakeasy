@@ -120,13 +120,14 @@ class Speakeasy(object):
         if app_name not in self.metrics:
             self.init_app_metrics(app_name)
 
+        dp = None
         pub_metrics = []
         if metric_type == 'GAUGE':
-
             with self.metrics_lock:
-                self.metrics[app_name][metric_type][metric_name].append(value)
+                dp = self.metrics[app_name][metric_type][metric_name]
+                dp.append(value)
             # Publish the current running average
-            pub_val = sum(self.metrics[app_name][metric_type][metric_name])/len(self.metrics[app_name][metric_type][metric_name])
+            pub_val = sum(dp)/len(dp)
             pub_metrics.append((self.hostname, app_name, metric_name,
                                 metric_type, pub_val, time.time()))
 
@@ -134,16 +135,17 @@ class Speakeasy(object):
             # Kill off the HISTOGRAM type!!
             metric_type = 'PERCENTILE'
             with self.metrics_lock:
-                self.metrics[app_name][metric_type][metric_name].append(value)
+                dp = self.metrics[app_name][metric_type][metric_name]
+                dp.append(value)
             # Publish the current running percentiles
             for p in self.percentiles:
                 pub_metrics.append((self.hostname, app_name,
                                     '{0}{1}_percentile'.format(metric_name, int(p*100)),
-                                    'GAUGE', utils.percentile(self.metrics[app_name][metric_type][metric_name], p),
+                                    'GAUGE', utils.percentile(dp, p),
                                     time.time()))
-            dp_len = len(self.metrics[app_name][metric_type][metric_name])
+            dp_len = len(dp)
             if dp_len > 0:
-              avg = sum(self.metrics[app_name][metric_type][metric_name])/dp_len
+              avg = sum(dp)/dp_len
               pub_metrics.append((self.hostname, app_name,
                                   '{0}average'.format(metric_name),
                                   metric_type, avg, time.time()))
