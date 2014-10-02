@@ -68,6 +68,12 @@ class TestSpeakeasy(unittest.TestCase):
         metric = self.srv.metrics['test_app']['GAUGE']['test_metric']
         self.assertTrue(sorted(metric) == [1.0])
 
+    def test_process_command(self):
+        req_sock = zmq.Context().socket(zmq.REQ)
+        req_sock.connect('tcp://localhost:{0}'.format(G_CMD_PORT))
+        req_sock.send('{}')
+        # TODO: fill this when process_command is implemented
+
     def test_legacy_socket(self):
         self.clear_sub_socket()
         legacy_sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
