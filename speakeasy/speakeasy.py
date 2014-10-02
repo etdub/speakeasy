@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import ujson
+import bisect
 import zmq
 
 import utils
@@ -136,7 +137,8 @@ class Speakeasy(object):
             metric_type = 'PERCENTILE'
             with self.metrics_lock:
                 dp = self.metrics[app_name][metric_type][metric_name]
-                dp.append(value)
+                # dp must be sorted before passing to utils.percentile
+                bisect.insort(dp, value)
             # Publish the current running percentiles
             for p in self.percentiles:
                 pub_metrics.append((self.hostname, app_name,
