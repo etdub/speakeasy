@@ -39,6 +39,7 @@ class Speakeasy(object):
                 os.remove(self.legacy)
             self.legacy_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
             self.legacy_socket.bind(self.legacy)
+            self.legacy_socket_fno = self.legacy_socket.fileno()
 
         # Process the args for emitter
         self.emitter_args = {}
@@ -72,6 +73,7 @@ class Speakeasy(object):
         self.poller = zmq.Poller()
         self.poller.register(self.recv_socket, zmq.POLLIN)
         self.poller.register(self.cmd_socket, zmq.POLLIN)
+        self.poller.register(self.legacy_socket, zmq.POLLIN)
 
         # Setup poll and emit thread
         self.poll_thread = threading.Thread(target=self.poll_sockets, args=())
@@ -134,7 +136,10 @@ class Speakeasy(object):
                 self.metrics[app_name][metric_type][metric_name].append(value)
             # Publish the current running percentiles
             for p in self.percentiles:
-                pub_metrics.append((self.hostname, app_name, '{0}{1}_percentile'.format(metric_name, int(p*100)), 'GAUGE', utils.percentile(self.metrics[app_name][metric_type][metric_name], p), time.time()))
+                pub_metrics.append((self.hostname, app_name,
+                                    '{0}{1}_percentile'.format(metric_name, int(p*100)),
+                                    'GAUGE', utils.percentile(self.metrics[app_name][metric_type][metric_name], p),
+                                    time.time()))
             dp_len = len(self.metrics[app_name][metric_type][metric_name])
             if dp_len > 0:
               avg = sum(self.metrics[app_name][metric_type][metric_name])/dp_len
@@ -177,13 +182,11 @@ class Speakeasy(object):
                 # Process command
                 self.process_command(cmd)
 
-            if self.legacy_socket:
+            if socks.get(self.legacy_socket_fno) == zmq.POLLIN:
                 # Process legacy format
                 try:
-                    r, w, x = select.select([self.legacy_socket], [], [], 1)
-                    if r:
-                        data, addr = self.legacy_socket.recvfrom(8192)
-                        self.metrics_queue.put((data, True))
+                    data, addr = self.legacy_socket.recvfrom(8192)
+                    self.metrics_queue.put((data, True))
                 except socket.error, e:
                     logger.error('Error on legacy socket - {0}'.format(e))
 
