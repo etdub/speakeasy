@@ -169,7 +169,7 @@ class Speakeasy(object):
         logger.info("Start polling")
         while self.running:
             socks = dict(self.poller.poll(1000))
-            if self.recv_socket in socks and socks[self.recv_socket] == zmq.POLLIN:
+            if socks.get(self.recv_socket) == zmq.POLLIN:
                 try:
                     metric = ujson.loads(self.recv_socket.recv())
                     # Put metric on metrics queue
@@ -177,7 +177,7 @@ class Speakeasy(object):
                 except ValueError as e:
                     logger.warn("Error receving metric: {0}".format(e))
 
-            if self.cmd_socket in socks and socks[self.cmd_socket] == zmq.POLLIN:
+            if socks.get(self.cmd_socket) == zmq.POLLIN:
                 cmd = ujson.loads(self.cmd_socket.recv())
                 # Process command
                 self.process_command(cmd)
