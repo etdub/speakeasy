@@ -3,7 +3,6 @@ import copy
 import logging
 import os
 import Queue
-import select
 import socket
 import sys
 import threading
@@ -18,8 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 class Speakeasy(object):
-    def __init__(self, host, metric_socket, cmd_port, pub_port, emitter_name, emitter_args=None,
-            emission_interval=60, legacy=None, hwm=20000):
+    def __init__(self, host, metric_socket, cmd_port, pub_port, emitter_name,
+                 emitter_args=None, emission_interval=60, legacy=None,
+                 hwm=20000):
         """ Aggregate metrics and emit. Also support live data querying. """
         self.metric_socket = metric_socket
         self.pub_port = pub_port
@@ -95,9 +95,9 @@ class Speakeasy(object):
                 continue
 
             try:
-              self.process_metric(metric, legacy=legacy)
+                self.process_metric(metric, legacy=legacy)
             except Exception as e:
-              logger.warn("Failed to process metric: {0}".format(e))
+                logger.warn("Failed to process metric: {0}".format(e))
 
             self.metrics_queue.task_done()
 
@@ -160,10 +160,10 @@ class Speakeasy(object):
                                     time.time()))
             dp_len = len(dp)
             if dp_len > 0:
-              avg = sum(dp)/dp_len
-              pub_metrics.append((self.hostname, app_name,
-                                  '{0}average'.format(metric_name),
-                                  'GAUGE', avg, time.time()))
+                avg = sum(dp)/dp_len
+                pub_metrics.append((self.hostname, app_name,
+                                    '{0}average'.format(metric_name),
+                                    'GAUGE', avg, time.time()))
         elif metric_type == 'COUNTER':
             pub_val = self.process_counter_metric(app_name, metric_name, value)
             # Publish the running count
@@ -291,9 +291,9 @@ class Speakeasy(object):
         if app not in self.metrics:
             with self.metrics_lock:
                 self.metrics[app] = {
-                  'GAUGE': collections.defaultdict(list),
-                  'COUNTER': collections.defaultdict(int),
-                  'PERCENTILE': collections.defaultdict(list)
+                    'GAUGE': collections.defaultdict(list),
+                    'COUNTER': collections.defaultdict(int),
+                    'PERCENTILE': collections.defaultdict(list)
                 }
 
     def start(self):
@@ -338,8 +338,8 @@ def import_emitter(name, **kwargs):
         name = namespace + name
 
     try:
-        emitter = __import__(name)
-    except Exception, e:
+        __import__(name)
+    except Exception:
         # app doesn't exist
         return
 
