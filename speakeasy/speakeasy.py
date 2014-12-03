@@ -101,6 +101,23 @@ class Speakeasy(object):
 
             self.metrics_queue.task_done()
 
+    def gauge_append(self, lst, value):
+        lst.append(value)
+
+    def gauge_sum(self, lst):
+        return sum(lst)/len(lst)
+
+    def process_gauge_metric(self, app_name, metric_name, value):
+        with self.metrics_lock:
+            dp = self.metrics[app_name]['GAUGE'][metric_name]
+            self.gauge_append(dp, value)
+        return self.gauge_sum(dp)
+
+    def process_counter_metric(self, app_name, metric_name, value):
+        with self.metrics_lock:
+            self.metrics[app_name]['COUNTER'][metric_name] += value
+        return self.metrics[app_name]['COUNTER'][metric_name]
+
     def process_metric(self, metric, legacy=False):
         """ Process metrics and store and publish """
         logger.debug("Received metric: {0}".format(metric))
@@ -124,14 +141,10 @@ class Speakeasy(object):
         dp = None
         pub_metrics = []
         if metric_type == 'GAUGE':
-            with self.metrics_lock:
-                dp = self.metrics[app_name][metric_type][metric_name]
-                dp.append(value)
+            pub_val = self.process_gauge_metric(app_name, metric_name, value)
             # Publish the current running average
-            pub_val = sum(dp)/len(dp)
             pub_metrics.append((self.hostname, app_name, metric_name,
                                 metric_type, pub_val, time.time()))
-
         elif metric_type == 'PERCENTILE' or metric_type == 'HISTOGRAM':
             # Kill off the HISTOGRAM type!!
             metric_type = 'PERCENTILE'
@@ -151,15 +164,11 @@ class Speakeasy(object):
               pub_metrics.append((self.hostname, app_name,
                                   '{0}average'.format(metric_name),
                                   'GAUGE', avg, time.time()))
-
         elif metric_type == 'COUNTER':
-            with self.metrics_lock:
-                self.metrics[app_name][metric_type][metric_name] += value
-            pub_val = self.metrics[app_name][metric_type][metric_name]
+            pub_val = self.process_counter_metric(app_name, metric_name, value)
             # Publish the running count
             pub_metrics.append((self.hostname, app_name, metric_name,
                                 metric_type, pub_val, time.time()))
-
         else:
             logger.warn("Unrecognized metric type - {0}".format(metric))
             return
@@ -339,7 +348,7 @@ def import_emitter(name, **kwargs):
     return module.Emitter(**kwargs)
 
 if __name__ == '__main__':
-    server = Speakeasy('0.0.0.0', '/var/tmp/metric_socket', '5001', '5002',
+    server = Speakeasy('0.0.0.0', '/var/tmp/metrics_socket', '55001', '55002',
                        'simple', ['filename=/var/tmp/metrics.out'], 60,
                        '/var/tmp/metric_socket2')
     server.start()
