@@ -74,7 +74,8 @@ class Speakeasy(object):
         self.poller = zmq.Poller()
         self.poller.register(self.recv_socket, zmq.POLLIN)
         self.poller.register(self.cmd_socket, zmq.POLLIN)
-        self.poller.register(self.legacy_socket, zmq.POLLIN)
+        if self.legacy_socket:
+          self.poller.register(self.legacy_socket, zmq.POLLIN)
 
         # Setup poll and emit thread
         self.poll_thread = threading.Thread(target=self.poll_sockets, args=())
