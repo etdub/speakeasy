@@ -2,5 +2,8 @@ build
 dist
 *.pyc
 *.swp
+*.swo
 MANIFEST
 *.egg-info
+.coverage
+.tox
