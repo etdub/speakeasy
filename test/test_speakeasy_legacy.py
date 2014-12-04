@@ -2,7 +2,9 @@ import unittest2 as unittest
 import random
 import socket
 import json
+import os
 import zmq
+import mock
 from test_util import get_random_free_port
 from speakeasy.speakeasy import Speakeasy
 
@@ -44,6 +46,18 @@ class TestSpeakeasy(unittest.TestCase):
         with self.srv.metrics_lock:
             self.srv.metrics = {}
 
+    # we use _0_ to force init test run first
+    def test_0_server_init(self):
+        self.assertEqual(self.srv.metric_socket, G_METRIC_SOCKET)
+        self.assertEqual(self.srv.cmd_port, G_CMD_PORT)
+        self.assertEqual(self.srv.pub_port, G_PUB_PORT)
+        self.assertEqual(self.srv.emission_interval, 60)
+        self.assertEqual(self.srv.legacy, G_LEGACY_METRIC_SOCKET)
+        self.assertEqual(self.srv.emitter_args['filename'],
+                         '/var/tmp/test_metrics.out')
+        self.assertEqual(len(self.srv.metrics), 0)
+        self.assertEqual(self.srv.running, True)
+
     def clear_sub_socket(self):
         while True:
             socks = dict(self.poller.poll(500))
@@ -52,7 +66,6 @@ class TestSpeakeasy(unittest.TestCase):
             else:
                 break
 
-    # we use _0_ to force init test run first
     def test_legacy_socket(self):
         self.clear_sub_socket()
         legacy_sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
@@ -66,6 +79,22 @@ class TestSpeakeasy(unittest.TestCase):
         self.assertEqual(metrics[0][2], u'test_cnt3')
         self.assertEqual(metrics[0][3], 'COUNTER')
         self.assertEqual(metrics[0][4], 10)
+
+    def test_recreate_legacy_socket(self):
+        dummy_legacy_socket = '/tmp/__speakeasy_legacy_socket'
+        with open(dummy_legacy_socket, 'w') as s:
+            s.write('\n')
+        with mock.patch('os.remove'):
+            try:
+                Speakeasy(G_SPEAKEASY_HOST, G_METRIC_SOCKET,
+                          str(get_random_free_port),
+                          str(get_random_free_port), 'simple',
+                          ['filename=/var/tmp/test_metrics.out'],
+                          60, dummy_legacy_socket)
+            except Exception:
+                pass
+            os.remove.assert_called_once_with(dummy_legacy_socket)
+        os.remove(dummy_legacy_socket)
 
 
 if __name__ == '__main__':

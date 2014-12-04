@@ -45,9 +45,9 @@ class Speakeasy(object):
         # Process the args for emitter
         self.emitter_args = {}
         if emitter_args:
-                for arg in emitter_args:
-                    k, v = arg.split('=')
-                    self.emitter_args[k] = v
+            for arg in emitter_args:
+                k, v = arg.split('=')
+                self.emitter_args[k] = v
 
         # Setup the emitter
         self.emitter = import_emitter(self.emitter_name, **self.emitter_args)
