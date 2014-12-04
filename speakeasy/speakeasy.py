@@ -36,7 +36,7 @@ class Speakeasy(object):
         self.legacy_socket = None
         if self.legacy:
             if os.path.exists(self.legacy):
-                logger.warn('Remove existing legacy socket and recreating'.format(self.legacy))
+                logger.warn('Remove existing legacy socket "{0}" and recreating'.format(self.legacy))
                 os.remove(self.legacy)
             self.legacy_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
             self.legacy_socket.bind(self.legacy)
