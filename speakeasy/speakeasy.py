@@ -75,7 +75,7 @@ class Speakeasy(object):
         self.poller.register(self.recv_socket, zmq.POLLIN)
         self.poller.register(self.cmd_socket, zmq.POLLIN)
         if self.legacy_socket:
-          self.poller.register(self.legacy_socket, zmq.POLLIN)
+            self.poller.register(self.legacy_socket, zmq.POLLIN)
 
         # Setup poll and emit thread
         self.poll_thread = threading.Thread(target=self.poll_sockets, args=())
@@ -200,7 +200,7 @@ class Speakeasy(object):
                 # Process command
                 self.process_command(cmd)
 
-            if socks.get(self.legacy_socket_fno) == zmq.POLLIN:
+            if self.legacy and socks.get(self.legacy_socket_fno) == zmq.POLLIN:
                 # Process legacy format
                 try:
                     data, addr = self.legacy_socket.recvfrom(8192)
