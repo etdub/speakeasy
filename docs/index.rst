@@ -7,7 +7,7 @@ Welcome to speakeasy's documentation!
 =====================================
 
 .. include:: ../README.md
-    :start-line: 6
+    :start-line: 7
 
 Pull requests welcome on github_!
 
