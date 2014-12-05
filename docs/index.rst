@@ -7,7 +7,11 @@ Welcome to speakeasy's documentation!
 =====================================
 
 .. include:: ../README.md
-    :start-line: 3
+    :start-line: 6
+
+Pull requests welcome on github_!
+
+.. _github: https://github.com/etdub/speakeasy
 
 Content:
 
