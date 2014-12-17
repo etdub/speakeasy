@@ -100,8 +100,8 @@ class TestSpeakeasy(unittest.TestCase):
                        str(get_random_free_port()),
                        str(get_random_free_port()), 'simple',
                        ['filename=/var/tmp/test_metrics.out'], 60)
-        self.assertEqual(oct(stat.S_IMODE(os.stat(tmp_metric_socket).st_mode)),
-                         '0755')
+        self.assertNotEqual(
+            oct(stat.S_IMODE(os.stat(tmp_metric_socket).st_mode)), '0666')
 
 
 if __name__ == '__main__':
