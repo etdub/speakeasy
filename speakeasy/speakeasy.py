@@ -333,6 +333,7 @@ class Speakeasy(object):
             if os.path.exists(self.legacy):
                 logger.info('Cleaning up legacy socket')
                 os.remove(self.legacy)
+        os.remove(self.metric_socket)
 
 
 def import_emitter(name, **kwargs):
