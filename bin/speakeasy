@@ -26,7 +26,7 @@ def main():
           help='Metric socket to listen on')
   parser.add_argument('-cp', '--cmd-port', required=True,
           help='Port to receive commands on')
-  parser.add_argument('-pp', '--pub-port', required=False,
+  parser.add_argument('-pp', '--pub-port', required=True,
           help='Port to publish updates on')
   parser.add_argument('-e', '--emitter', required=True,
           help='Module to emit data through periodically')
