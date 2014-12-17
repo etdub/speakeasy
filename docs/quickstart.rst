@@ -22,6 +22,9 @@ and send them to the 'simple' emitter, which will write the metrics out to
 
     speakeasy --metric-socket /var/tmp/metrics_socket --cmd-port 9839 --pub-port 9840 --emitter simple --emitter-args filename=/var/tmp/metrics.out --emission-interval 60
 
+By default, metric socket will be created with mode 0755. You can use
+`--socket-mod` option to set it to 0666 so it is writable by everyone.
+
 
 Sending data to speakeasy
 -------------------------
