@@ -24,7 +24,7 @@ def main():
           help='Hostname to emit metrics as')
   parser.add_argument('-ms', '--metric-socket', required=True,
           help='Metric socket to listen on')
-  parser.add_argument('-cp', '--cmd-port',
+  parser.add_argument('-cp', '--cmd-port', required=False,
           help='Port to receive commands on')
   parser.add_argument('-pp', '--pub-port', required=True,
           help='Port to publish updates on')
