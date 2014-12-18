@@ -37,7 +37,7 @@ def main():
   parser.add_argument('-l', '--legacy', required=False, type=str,
           help='Optional legacy socket to listen for incoming metrics')
   parser.add_argument('-sm', '--socket-mod', required=False, default=None, type=str,
-          help='file mode for metric socket')
+          help='File mode for metric socket')
   parser.add_argument('-v', '--verbose', required=False, default=False, action='store_true',
           help='Enable verbose logging')
 
