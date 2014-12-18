@@ -103,14 +103,14 @@ class TestSpeakeasy(unittest.TestCase):
         self.assertNotEqual(
             oct(stat.S_IMODE(os.stat(tmp_metric_socket).st_mode)), '0666')
 
-    def test_start_without_cmd_port(self):
+    def test_start_without_pub_port(self):
         tmp_metric_socket = '/var/tmp/tmp_test_metric_{0}'.format(
                                 random.random())
         s = Speakeasy(G_SPEAKEASY_HOST, tmp_metric_socket,
-                       None, str(get_random_free_port()), 'simple',
+                       str(get_random_free_port()), None, 'simple',
                        ['filename=/var/tmp/test_metrics.out'], 60)
         self.assertEqual(s.metric_socket, tmp_metric_socket)
-        self.assertEqual(s.cmd_port, None)
+        self.assertEqual(s.pub_port, None)
         self.assertEqual(s.emission_interval, 60)
         self.assertEqual(s.emitter_args['filename'],
                          '/var/tmp/test_metrics.out')

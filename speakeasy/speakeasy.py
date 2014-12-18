@@ -65,19 +65,18 @@ class Speakeasy(object):
             os.chmod(self.metric_socket, socket_mod)
 
         # Listen for commands
-        if self.cmd_port:
-            self.cmd_socket = self.context.socket(zmq.REP)
-            self.cmd_socket.bind('tcp://*:{0}'.format(self.cmd_port))
+        self.cmd_socket = self.context.socket(zmq.REP)
+        self.cmd_socket.bind('tcp://*:{0}'.format(self.cmd_port))
 
         # Publish metrics
-        self.pub_socket = self.context.socket(zmq.PUB)
-        self.pub_socket.bind('tcp://*:{0}'.format(self.pub_port))
+        if self.pub_port:
+            self.pub_socket = self.context.socket(zmq.PUB)
+            self.pub_socket.bind('tcp://*:{0}'.format(self.pub_port))
 
         # Register sockets for polling
         self.poller = zmq.Poller()
         self.poller.register(self.recv_socket, zmq.POLLIN)
-        if self.cmd_port:
-            self.poller.register(self.cmd_socket, zmq.POLLIN)
+        self.poller.register(self.cmd_socket, zmq.POLLIN)
         if self.legacy_socket:
             self.poller.register(self.legacy_socket, zmq.POLLIN)
 
@@ -179,7 +178,8 @@ class Speakeasy(object):
             return
 
         msg = ujson.dumps(pub_metrics)
-        self.pub_socket.send(msg)
+        if self.pub_port:
+            self.pub_socket.send(msg)
 
     def process_command(self, cmd):
         """ Process command and reply """
@@ -199,7 +199,7 @@ class Speakeasy(object):
                 except ValueError as e:
                     logger.warn("Error receving metric: {0}".format(e))
 
-            if self.cmd_port and socks.get(self.cmd_socket) == zmq.POLLIN:
+            if socks.get(self.cmd_socket) == zmq.POLLIN:
                 cmd = ujson.loads(self.cmd_socket.recv())
                 # Process command
                 self.process_command(cmd)
@@ -354,7 +354,6 @@ def import_emitter(name, **kwargs):
     return module.Emitter(**kwargs)
 
 if __name__ == '__main__':
-    import yappi; yappi.start()
     server = Speakeasy('0.0.0.0', '/var/tmp/metrics_socket', '55001', '55002',
                        'simple', ['filename=/var/tmp/metrics.out'], 60,
                        '/var/tmp/metric_socket2')
@@ -366,5 +365,3 @@ if __name__ == '__main__':
             print "Exception... exiting"
             server.shutdown()
             break
-    yappi.get_func_stats().print_all(
-        columns={0:("name",66), 1:("ncall", 8), 2:("tsub", 8), 3:("ttot", 8), 4:("tavg",8)})
