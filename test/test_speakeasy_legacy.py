@@ -82,16 +82,18 @@ class TestSpeakeasy(unittest.TestCase):
 
     def test_recreate_legacy_socket(self):
         dummy_legacy_socket = '/tmp/__speakeasy_legacy_socket'
-        with open(dummy_legacy_socket, 'w') as s:
-            s.write('\n')
+        with open(dummy_legacy_socket, 'w') as sf:
+            sf.write('\n')
         with mock.patch('os.remove'):
             try:
-                Speakeasy(G_SPEAKEASY_HOST, G_METRIC_SOCKET,
-                          str(get_random_free_port),
-                          str(get_random_free_port), 'simple',
-                          ['filename=/var/tmp/test_metrics.out'],
-                          60, dummy_legacy_socket)
-            except Exception:
+                s = Speakeasy(G_SPEAKEASY_HOST, G_METRIC_SOCKET,
+                              str(get_random_free_port()),
+                              str(get_random_free_port()), 'simple',
+                              ['filename=/var/tmp/test_metrics.out'],
+                              60, dummy_legacy_socket)
+            except socket.error:
+                # remove got patched, so we should get a address already init
+                # use socket error
                 pass
             os.remove.assert_called_once_with(dummy_legacy_socket)
         os.remove(dummy_legacy_socket)

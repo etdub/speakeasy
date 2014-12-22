@@ -1,4 +1,6 @@
 import unittest2 as unittest
+import os
+import stat
 import random
 import zmq
 from test_util import get_random_free_port
@@ -69,6 +71,50 @@ class TestSpeakeasy(unittest.TestCase):
         req_sock.connect('tcp://localhost:{0}'.format(G_CMD_PORT))
         req_sock.send('{}')
         # TODO: fill this when process_command is implemented
+
+    def test_socket_cleanup(self):
+        tmp_metric_socket = '/var/tmp/tmp_test_metric_socket{0}'.format(
+                                random.random())
+        srv = Speakeasy(G_SPEAKEASY_HOST, tmp_metric_socket,
+                      str(get_random_free_port()),
+                      str(get_random_free_port()), 'simple',
+                      ['filename=/var/tmp/test_metrics.out'],
+                      60, socket_mod=0666)
+        srv.start()
+        self.assertTrue(os.path.exists(tmp_metric_socket))
+        srv.shutdown()
+        self.assertFalse(os.path.exists(tmp_metric_socket))
+
+    def test_socket_mod(self):
+        tmp_metric_socket = '/var/tmp/tmp_test_metric_{0}'.format(
+                                random.random())
+        s1 = Speakeasy(G_SPEAKEASY_HOST, tmp_metric_socket,
+                       str(get_random_free_port()),
+                       str(get_random_free_port()), 'simple',
+                       ['filename=/var/tmp/test_metrics.out'],
+                       60, socket_mod=0666)
+        self.assertEqual(oct(stat.S_IMODE(os.stat(tmp_metric_socket).st_mode)),
+                         '0666')
+
+        s2 = Speakeasy(G_SPEAKEASY_HOST, tmp_metric_socket,
+                       str(get_random_free_port()),
+                       str(get_random_free_port()), 'simple',
+                       ['filename=/var/tmp/test_metrics.out'], 60)
+        self.assertNotEqual(
+            oct(stat.S_IMODE(os.stat(tmp_metric_socket).st_mode)), '0666')
+
+    def test_start_without_pub_port(self):
+        tmp_metric_socket = '/var/tmp/tmp_test_metric_{0}'.format(
+                                random.random())
+        s = Speakeasy(G_SPEAKEASY_HOST, tmp_metric_socket,
+                       str(get_random_free_port()), None, 'simple',
+                       ['filename=/var/tmp/test_metrics.out'], 60)
+        self.assertEqual(s.metric_socket, tmp_metric_socket)
+        self.assertEqual(s.pub_port, None)
+        self.assertEqual(s.emission_interval, 60)
+        self.assertEqual(s.emitter_args['filename'],
+                         '/var/tmp/test_metrics.out')
+        self.assertEqual(len(s.metrics), 0)
 
 
 if __name__ == '__main__':
