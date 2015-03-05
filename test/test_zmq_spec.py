@@ -94,6 +94,7 @@ class TestZmqSpec(unittest.TestCase):
             json.dumps(['test_app', 'test_counter', 'COUNTER', '15']))
         time.sleep(2)
         call_list = self.srv.emitter.emit.call_args_list
+        print call_list
         filtered_calls = [c for c in call_list
                           if c[0][0] and len(c[0][0][0]) > 0]
         m = filtered_calls[-1][0][0][0]

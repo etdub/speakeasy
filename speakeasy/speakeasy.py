@@ -16,6 +16,11 @@ import utils
 logger = logging.getLogger(__name__)
 
 
+def _gauge_pair():
+    """ Track gauge as a pair of (sum, count) """
+    return [0, 0]
+
+
 class Speakeasy(object):
     def __init__(self, host, metric_socket, cmd_port, pub_port, emitter_name,
                  emitter_args=None, emission_interval=60, legacy=None,
@@ -106,10 +111,11 @@ class Speakeasy(object):
             self.metrics_queue.task_done()
 
     def gauge_append(self, lst, value):
-        lst.append(value)
+        lst[0] += value
+        lst[1] += 1
 
     def gauge_sum(self, lst):
-        return sum(lst)/len(lst)
+        return float(lst[0])/lst[1]
 
     def process_gauge_metric(self, app_name, metric_name, value):
         with self.metrics_lock:
@@ -143,42 +149,45 @@ class Speakeasy(object):
             self.init_app_metrics(app_name)
 
         dp = None
-        pub_metrics = []
+        if self.pub_port:
+            pub_metrics = []
+        else:
+            pub_metrics = None
+        pub_val = None
         if metric_type == 'GAUGE':
             pub_val = self.process_gauge_metric(app_name, metric_name, value)
             # Publish the current running average
-            pub_metrics.append((self.hostname, app_name, metric_name,
-                                metric_type, pub_val, time.time()))
+
         elif metric_type == 'PERCENTILE' or metric_type == 'HISTOGRAM':
             # Kill off the HISTOGRAM type!!
             metric_type = 'PERCENTILE'
+            # Track average value separately
+            avg_pub_val = self.process_gauge_metric(app_name, metric_name + 'average', value)
             with self.metrics_lock:
                 dp = self.metrics[app_name][metric_type][metric_name]
                 # dp must be sorted before passing to utils.percentile
                 bisect.insort(dp, value)
             # Publish the current running percentiles
-            for p in self.percentiles:
-                pub_metrics.append((self.hostname, app_name,
-                                    '{0}{1}_percentile'.format(metric_name, int(p*100)),
-                                    'GAUGE', utils.percentile(dp, p),
-                                    time.time()))
-            dp_len = len(dp)
-            if dp_len > 0:
-                avg = sum(dp)/dp_len
-                pub_metrics.append((self.hostname, app_name,
-                                    '{0}average'.format(metric_name),
-                                    'GAUGE', avg, time.time()))
+            if self.pub_port:
+                cur_time = time.time()
+                for p in self.percentiles:
+                    pub_metrics.append((self.hostname, app_name,
+                                        '{0}{1}_percentile'.format(metric_name, int(p*100)),
+                                        'GAUGE', utils.percentile(dp, p),
+                                        cur_time))
+                pub_metrics.append((self.hostname, app_name, metric_name + 'average', 'GAUGE', avg_pub_val, cur_time))
         elif metric_type == 'COUNTER':
             pub_val = self.process_counter_metric(app_name, metric_name, value)
             # Publish the running count
-            pub_metrics.append((self.hostname, app_name, metric_name,
-                                metric_type, pub_val, time.time()))
         else:
             logger.warn("Unrecognized metric type - {0}".format(metric))
             return
 
-        msg = ujson.dumps(pub_metrics)
         if self.pub_port:
+            if metric_type != 'PERCENTILE':
+                pub_metrics.append((self.hostname, app_name, metric_name,
+                                    metric_type, pub_val, time.time()))
+            msg = ujson.dumps(pub_metrics)
             self.pub_socket.send(msg)
 
     def process_command(self, cmd):
@@ -261,12 +270,12 @@ class Speakeasy(object):
                 metrics.append((app, m, val, 'COUNTER', time.time()))
 
             for m, vals in ss[app]['GAUGE'].iteritems():
-                if len(vals) == 0:
+                if vals[1] == 0:
                     logger.debug("No values for metric: {0}".format(m))
                     continue
 
                 if vals:
-                    metrics.append((app, m, sum(vals) / float(len(vals)),
+                    metrics.append((app, m, vals[0] / float(vals[1]),
                                     'GAUGE', time.time()))
 
             for m, vals in ss[app]['PERCENTILE'].iteritems():
@@ -280,15 +289,13 @@ class Speakeasy(object):
                     # the percentile to
                     metrics.append((app, '{0}{1}_percentile'.format(m, int(p*100)),
                                     utils.percentile(vals, p), 'GAUGE', time.time()))
-                metrics.append((app, '{0}average'.format(m),
-                                sum(vals) / float(len(vals)), 'GAUGE', time.time()))
         return metrics
 
     def reset_metrics(self):
         """ Reset metrics for next interval """
         for app in self.metrics:
             with self.metrics_lock:
-                self.metrics[app]['GAUGE'] = collections.defaultdict(list)
+                self.metrics[app]['GAUGE'] = collections.defaultdict(_gauge_pair)
                 self.metrics[app]['PERCENTILE'] = collections.defaultdict(list)
 
     def init_app_metrics(self, app):
@@ -296,7 +303,7 @@ class Speakeasy(object):
         if app not in self.metrics:
             with self.metrics_lock:
                 self.metrics[app] = {
-                    'GAUGE': collections.defaultdict(list),
+                    'GAUGE': collections.defaultdict(_gauge_pair),
                     'COUNTER': collections.defaultdict(int),
                     'PERCENTILE': collections.defaultdict(list)
                 }

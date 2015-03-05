@@ -1,0 +1,47 @@
+#!/usr/bin/env python
+
+import random
+from speakeasy.speakeasy import Speakeasy
+import time
+
+def get_random_free_port():
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
+    sock.bind(('', 0))
+    sock.listen(socket.SOMAXCONN)
+    ipaddr, port = sock.getsockname()
+    sock.close()
+    return port
+
+def init_speakeasy(pub_enabled):
+    G_SPEAKEASY_HOST = '0.0.0.0'
+    G_PUB_PORT = str(get_random_free_port()) if pub_enabled else None
+    G_CMD_PORT = str(get_random_free_port())
+    G_METRIC_SOCKET = '/var/tmp/test_metric_{0}'.format(random.random())
+    srv = Speakeasy(G_SPEAKEASY_HOST, G_METRIC_SOCKET, G_CMD_PORT, G_PUB_PORT,
+                    'simple', ['filename=/var/tmp/test_metrics.out'], 60)
+    return srv
+
+def run_test(speakeasy_server, metric_type, num_metrics):
+    start = time.time()
+    for _ in xrange(10000):
+      srv.process_metric(['test_app', 'test_metric_c', metric_type, 1])
+    end = time.time()
+    return end-start
+
+if __name__ == '__main__':
+    print "Publish socket enabled"
+    srv = init_speakeasy(True)
+
+    mtypes = ['COUNTER', 'GAUGE', 'PERCENTILE']
+    num_metrics = 10000
+    for mtype in mtypes:
+        run_time = run_test(srv, mtype, num_metrics)
+        print "{0} - process {1} metrics in {2}s".format(mtype, num_metrics, run_time)
+
+    print
+    print "Publish socket disabled"
+    srv = init_speakeasy(False)
+    for mtype in mtypes:
+        run_time = run_test(srv, mtype, num_metrics)
+        print "{0} - process {1} metrics in {2}s".format(mtype, num_metrics, run_time)

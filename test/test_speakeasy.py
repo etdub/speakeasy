@@ -64,7 +64,7 @@ class TestSpeakeasy(unittest.TestCase):
     def test_process_metric(self):
         self.srv.process_metric(['test_app', 'test_metric', 'GAUGE', 1])
         metric = self.srv.metrics['test_app']['GAUGE']['test_metric']
-        self.assertTrue(sorted(metric) == [1.0])
+        self.assertTrue(metric == [1.0, 1])
 
     def test_process_command(self):
         req_sock = zmq.Context().socket(zmq.REQ)
