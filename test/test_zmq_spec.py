@@ -6,7 +6,7 @@ import zmq
 import json
 import time
 import random
-from mock import patch, Mock
+from mock import Mock
 from speakeasy.speakeasy import Speakeasy
 from test_util import get_random_free_port
 
@@ -21,7 +21,8 @@ G_CMD_PORT = str(get_random_free_port())
 
 def gen_speakeasy_server():
     return Speakeasy(G_SPEAKEASY_HOST, G_METRIC_SOCKET, G_CMD_PORT, G_PUB_PORT,
-                     'simple', ['filename=whatever'], 1, G_LEGACY_METRIC_SOCKET)
+                     'simple', ['filename=whatever'], 1,
+                     G_LEGACY_METRIC_SOCKET)
 
 
 class TestEmitter(object):
@@ -68,7 +69,7 @@ class TestZmqSpec(unittest.TestCase):
         while True:
             socks = dict(self.poller.poll(500))
             if self.sub_socket in socks:
-                self.sub_socket.recv() # suck out zmq pub event
+                self.sub_socket.recv()  # suck out zmq pub event
             else:
                 break
 
@@ -129,7 +130,6 @@ class TestZmqSpec(unittest.TestCase):
         self.assertEqual(metrics[0][4], 1)
 
     def test_send_percentile_to_pub_socket(self):
-        import pprint
         self.clear_sub_socket()
         self.send_socket.send(
             json.dumps(['test_app2', 'test_metric', 'PERCENTILE', '13']))
@@ -223,6 +223,44 @@ class TestZmqSpec(unittest.TestCase):
         self.assertEqual(metrics[4][2], u'test_metricaverage')
         self.assertEqual(metrics[4][3], 'GAUGE')
         self.assertEqual(metrics[4][4], 6.3333333332999997)
+
+    def test_gauge_avg_calculation(self):
+        self.clear_sub_socket()
+        self.send_socket.send(
+            json.dumps(['test_app', 'test_gauge', 'GAUGE', '5']))
+        self.assertGreater(len(dict(self.poller.poll(500))), 0)
+        metrics = json.loads(self.sub_socket.recv())
+        self.assertEqual(len(metrics), 1)
+        self.assertEqual(metrics[0][:-1],
+                         [G_SPEAKEASY_HOST, u'test_app', u'test_gauge',
+                          u'GAUGE', 5.0])
+
+        self.send_socket.send(
+            json.dumps(['test_app', 'test_gauge', 'GAUGE', '3']))
+        self.assertGreater(len(dict(self.poller.poll(500))), 0)
+        metrics = json.loads(self.sub_socket.recv())
+        self.assertEqual(len(metrics), 1)
+        self.assertEqual(metrics[0][:-1],
+                         [G_SPEAKEASY_HOST, u'test_app', u'test_gauge',
+                          u'GAUGE', 4.0])
+
+        self.send_socket.send(
+            json.dumps(['test_app', 'test_gauge', 'GAUGE', '13']))
+        self.assertGreater(len(dict(self.poller.poll(500))), 0)
+        metrics = json.loads(self.sub_socket.recv())
+        self.assertEqual(len(metrics), 1)
+        self.assertEqual(metrics[0][:-1],
+                         [G_SPEAKEASY_HOST, u'test_app', u'test_gauge',
+                          u'GAUGE', 7.0])
+
+        self.send_socket.send(
+            json.dumps(['test_app', 'test_gauge', 'GAUGE', '3']))
+        self.assertGreater(len(dict(self.poller.poll(500))), 0)
+        metrics = json.loads(self.sub_socket.recv())
+        self.assertEqual(len(metrics), 1)
+        self.assertEqual(metrics[0][:-1],
+                         [G_SPEAKEASY_HOST, u'test_app', u'test_gauge',
+                          u'GAUGE', 6.0])
 
 
 if __name__ == '__main__':
