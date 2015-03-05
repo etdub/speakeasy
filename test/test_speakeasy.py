@@ -74,12 +74,12 @@ class TestSpeakeasy(unittest.TestCase):
 
     def test_socket_cleanup(self):
         tmp_metric_socket = '/var/tmp/tmp_test_metric_socket{0}'.format(
-                                random.random())
+            random.random())
         srv = Speakeasy(G_SPEAKEASY_HOST, tmp_metric_socket,
-                      str(get_random_free_port()),
-                      str(get_random_free_port()), 'simple',
-                      ['filename=/var/tmp/test_metrics.out'],
-                      60, socket_mod=0666)
+                        str(get_random_free_port()),
+                        str(get_random_free_port()), 'simple',
+                        ['filename=/var/tmp/test_metrics.out'],
+                        60, socket_mod=0666)
         srv.start()
         self.assertTrue(os.path.exists(tmp_metric_socket))
         srv.shutdown()
@@ -87,28 +87,28 @@ class TestSpeakeasy(unittest.TestCase):
 
     def test_socket_mod(self):
         tmp_metric_socket = '/var/tmp/tmp_test_metric_{0}'.format(
-                                random.random())
-        s1 = Speakeasy(G_SPEAKEASY_HOST, tmp_metric_socket,
-                       str(get_random_free_port()),
-                       str(get_random_free_port()), 'simple',
-                       ['filename=/var/tmp/test_metrics.out'],
-                       60, socket_mod=0666)
+            random.random())
+        Speakeasy(G_SPEAKEASY_HOST, tmp_metric_socket,
+                  str(get_random_free_port()),
+                  str(get_random_free_port()), 'simple',
+                  ['filename=/var/tmp/test_metrics.out'],
+                  60, socket_mod=0666)
         self.assertEqual(oct(stat.S_IMODE(os.stat(tmp_metric_socket).st_mode)),
                          '0666')
 
-        s2 = Speakeasy(G_SPEAKEASY_HOST, tmp_metric_socket,
-                       str(get_random_free_port()),
-                       str(get_random_free_port()), 'simple',
-                       ['filename=/var/tmp/test_metrics.out'], 60)
+        Speakeasy(G_SPEAKEASY_HOST, tmp_metric_socket,
+                  str(get_random_free_port()),
+                  str(get_random_free_port()), 'simple',
+                  ['filename=/var/tmp/test_metrics.out'], 60)
         self.assertNotEqual(
             oct(stat.S_IMODE(os.stat(tmp_metric_socket).st_mode)), '0666')
 
     def test_start_without_pub_port(self):
         tmp_metric_socket = '/var/tmp/tmp_test_metric_{0}'.format(
-                                random.random())
+            random.random())
         s = Speakeasy(G_SPEAKEASY_HOST, tmp_metric_socket,
-                       str(get_random_free_port()), None, 'simple',
-                       ['filename=/var/tmp/test_metrics.out'], 60)
+                      str(get_random_free_port()), None, 'simple',
+                      ['filename=/var/tmp/test_metrics.out'], 60)
         self.assertEqual(s.metric_socket, tmp_metric_socket)
         self.assertEqual(s.pub_port, None)
         self.assertEqual(s.emission_interval, 60)
