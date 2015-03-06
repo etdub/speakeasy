@@ -126,11 +126,10 @@ class Speakeasy(object):
     def process_counter_metric(self, app_name, metric_name, value):
         with self.metrics_lock:
             self.metrics[app_name]['COUNTER'][metric_name] += value
-        return self.metrics[app_name]['COUNTER'][metric_name]
+            return self.metrics[app_name]['COUNTER'][metric_name]
 
     def process_metric(self, metric, legacy=False):
         """ Process metrics and store and publish """
-        logger.debug("Received metric: {0}".format(metric))
         if legacy:
             # Legacy format for metrics is slightly different...
             # Index them under same "app name"
@@ -144,7 +143,6 @@ class Speakeasy(object):
         except ValueError:
             logger.warn("Failed to cast metric value to float - {0}".format(metric))
             return
-
         if app_name not in self.metrics:
             self.init_app_metrics(app_name)
 
