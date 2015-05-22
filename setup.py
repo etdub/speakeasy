@@ -13,6 +13,7 @@ setup(
     ],
     packages=['speakeasy', 'speakeasy.emitter'],
     scripts=['bin/speakeasy'],
+    license='Apache License 2.0',
     url='https://github.com/etdub/speakeasy',
     classifiers=(
         'Intended Audience :: Developers',
@@ -21,5 +22,6 @@ setup(
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.3',
+        'License :: OSI Approved :: Apache Software License',
     ),
 )
