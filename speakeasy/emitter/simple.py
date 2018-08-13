@@ -1,7 +1,7 @@
 import logging
-import os
 
 logger = logging.getLogger(__name__)
+
 
 class Emitter(object):
     def __init__(self, **kwargs):
@@ -13,4 +13,4 @@ class Emitter(object):
             for metric in metrics:
                 mline = '|'.join([str(m) for m in metric])
                 logger.debug('Writing metric out to file - {0}'.format(mline))
-                fh.write(mline+'\n')
+                fh.write(mline + '\n')

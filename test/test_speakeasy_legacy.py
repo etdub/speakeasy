@@ -86,11 +86,11 @@ class TestSpeakeasy(unittest.TestCase):
             sf.write('\n')
         with mock.patch('os.remove'):
             try:
-                s = Speakeasy(G_SPEAKEASY_HOST, G_METRIC_SOCKET,
-                              str(get_random_free_port()),
-                              str(get_random_free_port()), 'simple',
-                              ['filename=/var/tmp/test_metrics.out'],
-                              60, dummy_legacy_socket)
+                Speakeasy(G_SPEAKEASY_HOST, G_METRIC_SOCKET,
+                          str(get_random_free_port()),
+                          str(get_random_free_port()), 'simple',
+                          ['filename=/var/tmp/test_metrics.out'],
+                          60, dummy_legacy_socket)
             except socket.error:
                 # remove got patched, so we should get a address already init
                 # use socket error

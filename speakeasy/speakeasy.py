@@ -115,7 +115,7 @@ class Speakeasy(object):
         lst[1] += 1
 
     def gauge_sum(self, lst):
-        return float(lst[0])/lst[1]
+        return float(lst[0]) / lst[1]
 
     def process_gauge_metric(self, app_name, metric_name, value):
         with self.metrics_lock:
@@ -170,7 +170,7 @@ class Speakeasy(object):
                 cur_time = time.time()
                 for p in self.percentiles:
                     pub_metrics.append((self.hostname, app_name,
-                                        '{0}{1}_percentile'.format(metric_name, int(p*100)),
+                                        '{0}{1}_percentile'.format(metric_name, int(p * 100)),
                                         'GAUGE', utils.percentile(dp, p),
                                         cur_time))
                 pub_metrics.append((self.hostname, app_name, metric_name + 'average', 'GAUGE', avg_pub_val, cur_time))
@@ -285,7 +285,7 @@ class Speakeasy(object):
                 for p in self.percentiles:
                     # Assume the metric name has a trailing separator to append
                     # the percentile to
-                    metrics.append((app, '{0}{1}_percentile'.format(m, int(p*100)),
+                    metrics.append((app, '{0}{1}_percentile'.format(m, int(p * 100)),
                                     utils.percentile(vals, p), 'GAUGE', time.time()))
         return metrics
 
@@ -358,6 +358,7 @@ def import_emitter(name, **kwargs):
 
     return module.Emitter(**kwargs)
 
+
 if __name__ == '__main__':
     server = Speakeasy('0.0.0.0', '/var/tmp/metrics_socket', '55001', '55002',
                        'simple', ['filename=/var/tmp/metrics.out'], 60,
@@ -366,7 +367,7 @@ if __name__ == '__main__':
     while True:
         try:
             time.sleep(1)
-        except:
-            print "Exception... exiting"
+        except Exception as e:
+            print "Exception ({})... exiting".format(e)
             server.shutdown()
             break

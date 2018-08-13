@@ -8,6 +8,7 @@ import time
 
 logger = logging.getLogger()
 
+
 def init_logger(verbose):
     if verbose:
         logger.setLevel(logging.DEBUG)
@@ -18,48 +19,50 @@ def init_logger(verbose):
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
+
 def main():
-  parser = argparse.ArgumentParser(description='Run Speakeasy server')
-  parser.add_argument('-H', '--host', required=False, default=socket.getfqdn(),
-          help='Hostname to emit metrics as')
-  parser.add_argument('-ms', '--metric-socket', required=True,
-          help='Metric socket to listen on')
-  parser.add_argument('-cp', '--cmd-port', required=True,
-          help='Port to receive commands on')
-  parser.add_argument('-pp', '--pub-port', required=False,
-          help='Port to publish updates on')
-  parser.add_argument('-e', '--emitter', required=True,
-          help='Module to emit data through periodically')
-  parser.add_argument('-ea', '--emitter-args', required=False, nargs='*',
-          help='Arguments to be passed to emitter module')
-  parser.add_argument('-ei', '--emission-interval', default=60, required=False, type=float,
-          help='Frequency to emit data (seconds)')
-  parser.add_argument('-l', '--legacy', required=False, type=str,
-          help='Optional legacy socket to listen for incoming metrics')
-  parser.add_argument('-sm', '--socket-mod', required=False, default=None, type=str,
-          help='File mode for metric socket')
-  parser.add_argument('-v', '--verbose', required=False, default=False, action='store_true',
-          help='Enable verbose logging')
+    parser = argparse.ArgumentParser(description='Run Speakeasy server')
+    parser.add_argument('-H', '--host', required=False, default=socket.getfqdn(),
+                        help='Hostname to emit metrics as')
+    parser.add_argument('-ms', '--metric-socket', required=True,
+                        help='Metric socket to listen on')
+    parser.add_argument('-cp', '--cmd-port', required=True,
+                        help='Port to receive commands on')
+    parser.add_argument('-pp', '--pub-port', required=False,
+                        help='Port to publish updates on')
+    parser.add_argument('-e', '--emitter', required=True,
+                        help='Module to emit data through periodically')
+    parser.add_argument('-ea', '--emitter-args', required=False, nargs='*',
+                        help='Arguments to be passed to emitter module')
+    parser.add_argument('-ei', '--emission-interval', default=60, required=False, type=float,
+                        help='Frequency to emit data (seconds)')
+    parser.add_argument('-l', '--legacy', required=False, type=str,
+                        help='Optional legacy socket to listen for incoming metrics')
+    parser.add_argument('-sm', '--socket-mod', required=False, default=None, type=str,
+                        help='File mode for metric socket')
+    parser.add_argument('-v', '--verbose', required=False, default=False, action='store_true',
+                        help='Enable verbose logging')
 
-  args = parser.parse_args()
+    args = parser.parse_args()
 
-  init_logger(args.verbose)
+    init_logger(args.verbose)
 
-  logger.info('Start speakeasy')
-  socket_mod = int(args.socket_mod, base=8) if args.socket_mod else None
-  server = Speakeasy(args.host, args.metric_socket, args.cmd_port,
-                     args.pub_port, args.emitter, args.emitter_args,
-                     args.emission_interval, args.legacy,
-                     socket_mod=socket_mod)
-  server.start()
+    logger.info('Start speakeasy')
+    socket_mod = int(args.socket_mod, base=8) if args.socket_mod else None
+    server = Speakeasy(args.host, args.metric_socket, args.cmd_port,
+                       args.pub_port, args.emitter, args.emitter_args,
+                       args.emission_interval, args.legacy,
+                       socket_mod=socket_mod)
+    server.start()
 
-  while True:
-    try:
-      time.sleep(1)
-    except (KeyboardInterrupt, Exception), e:
-      logger.warn("Exception... exiting - {0}".format(e))
-      server.shutdown()
-      break
+    while True:
+        try:
+            time.sleep(1)
+        except (KeyboardInterrupt, Exception), e:
+            logger.warn("Exception... exiting - {0}".format(e))
+            server.shutdown()
+        break
 
-if __name__=='__main__':
-  main()
+
+if __name__ == '__main__':
+    main()
