@@ -12,6 +12,7 @@ import bisect
 import zmq
 import resource
 import utils
+import signal
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +265,7 @@ class Speakeasy(object):
         self.process_metric(["speakeasy", "mem.rss", "GAUGE", rss_usage])
         if not self.stop.is_set() and (rss_usage > MAX_RSS):
             logger.error("RSS usage (%d) > limit (%d). Killing myself.", rss_usage, MAX_RSS)
-            self.stop.set()
+            os.kill(os.getpid(), signal.SIGTERM)
 
     def poll_sockets(self):
         """ Poll metrics socket and cmd socket for data """
@@ -297,7 +298,6 @@ class Speakeasy(object):
                             logger.warn("Got an empty packet (possibly rumrunner ping)")
                             empty_packets += 1
                             continue
-                        print("Got", data)
                         metric = ujson.loads(data)
                         # Put metric on metrics queue
                         self.metrics_queue.put((metric, False))
