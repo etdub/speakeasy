@@ -20,7 +20,7 @@ Content:
 
     intro
     quickstart
-
+    speakeasy
 
 Indices and tables
 ==================
