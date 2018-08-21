@@ -5,11 +5,19 @@ import random
 import zmq
 from test_util import get_random_free_port
 from speakeasy.speakeasy import Speakeasy
+import speakeasy.speakeasy as speakeasy
+import logging
+
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s [%(levelname)s] %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S')
+logger = logging.getLogger()
 
 G_SPEAKEASY_HOST = '0.0.0.0'
 G_PUB_PORT = str(get_random_free_port())
 G_CMD_PORT = str(get_random_free_port())
 G_METRIC_SOCKET = '/var/tmp/test_metric_{0}'.format(random.random())
+speakeasy.QUEUE_WAIT_SECS = 1
 
 
 def gen_speakeasy_server():
@@ -20,8 +28,9 @@ def gen_speakeasy_server():
 class TestSpeakeasy(unittest.TestCase):
     @classmethod
     def setUpClass(self):
+        logger.info("**TESTS**: Setup starts")
         self.srv = gen_speakeasy_server()
-
+        logger.info("**TESTS**: Server generated")
         self.sub_socket = zmq.Context().socket(zmq.SUB)
         self.sub_socket.connect('tcp://localhost:{0}'.format(G_PUB_PORT))
         self.sub_socket.setsockopt(zmq.SUBSCRIBE, '')
@@ -30,10 +39,18 @@ class TestSpeakeasy(unittest.TestCase):
         self.poller.register(self.sub_socket, zmq.POLLIN)
 
         self.srv.start()
+        logger.info("**TESTS**: Setup ends")
 
     @classmethod
     def tearDownClass(self):
+        logger.info("**TESTS**: Class teardown begins")
+        logger.info("**TESTS**: Beginning server shutdown")
         self.srv.shutdown()
+        logger.info("**TESTS**: Server shutdown complete")
+        logger.info("**TESTS**: Closing socket")
+        self.sub_socket.close()
+        logger.info("**TESTS**: Socket closed.")
+        logger.info("**TESTS**: Class teardown complete")
 
     def setUp(self):
         pass
@@ -59,7 +76,7 @@ class TestSpeakeasy(unittest.TestCase):
         self.assertEqual(self.srv.emitter_args['filename'],
                          '/var/tmp/test_metrics.out')
         self.assertEqual(len(self.srv.metrics), 0)
-        self.assertEqual(self.srv.running, True)
+        self.assertFalse(self.srv.is_shutdown())
 
     def test_process_metric(self):
         self.srv.process_metric(['test_app', 'test_metric', 'GAUGE', 1])

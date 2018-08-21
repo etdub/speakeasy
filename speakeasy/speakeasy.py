@@ -22,6 +22,10 @@ MAX_RECEIVE_HWM = 20000
 # How often should we poll the socket for metrics
 POLLING_TIMEOUT_MS = 500
 
+# How long should we wait on metric queue to events. Affects responsiveness to server shutdown
+QUEUE_WAIT_SECS = 5
+
+
 # After these many loops of POLLING_TIMEOUT_MS, metric processed counts
 # will be updated in stats
 METRIC_CHECKPOINT_INTERVAL = 20
@@ -137,7 +141,7 @@ class Speakeasy(object):
         logger.info("Start processing metrics queue")
         while not self.stop.is_set():
             try:
-                metric, legacy = self.metrics_queue.get(timeout=5)
+                metric, legacy = self.metrics_queue.get(timeout=QUEUE_WAIT_SECS)
             except Queue.Empty:
                 continue
 
@@ -153,6 +157,9 @@ class Speakeasy(object):
         "Add a value to the gauge. This adds to a running sum of the values and a counter for how many values were added"
         lst[0] += value
         lst[1] += 1
+
+    def is_shutdown(self):
+        return self.stop.is_set()
 
     def gauge_sum(self, lst):
         "Returns the computed mean for the gauge values added till now"
