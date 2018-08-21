@@ -8,8 +8,15 @@ import time
 import random
 from mock import Mock
 from speakeasy.speakeasy import Speakeasy
-from test_util import get_random_free_port
+from test_util import get_random_free_port, filtered_metric_recv
+import speakeasy.speakeasy as speakeasy
+import logging
 
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s [%(levelname)s] %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S')
+logger = logging.getLogger()
+speakeasy.QUEUE_WAIT_SECS = 1
 
 random.seed(time.time())
 G_SPEAKEASY_HOST = '0.0.0.0'
@@ -78,10 +85,15 @@ class TestZmqSpec(unittest.TestCase):
         self.send_socket.send(
             json.dumps(['test_app', 'test_gauge', 'GAUGE', '2']))
         time.sleep(2)
-        call_list = self.srv.emitter.emit.call_args_list
-        filtered_calls = [c for c in call_list
-                          if c[0][0] and len(c[0][0][0]) > 0]
-        m = filtered_calls[-1][0][0][0]
+        # call_list = self.srv.emitter.emit.call_args_list
+        filtered_metrics = []
+        for call in self.srv.emitter.emit.call_args_list:
+            args, kwargs = call
+            for metric in args[0]:
+                if metric[0] != "speakeasy":
+                    filtered_metrics.append(metric)
+        self.assertGreater(len(filtered_metrics), 0, "There should be at least one metric being emitted")
+        m = filtered_metrics[0]
         self.assertEqual(len(m), 5)
         self.assertEqual(m[0], u'test_app')
         self.assertEqual(m[1], u'test_gauge')
@@ -94,7 +106,6 @@ class TestZmqSpec(unittest.TestCase):
             json.dumps(['test_app', 'test_counter', 'COUNTER', '15']))
         time.sleep(2)
         call_list = self.srv.emitter.emit.call_args_list
-        print call_list
         filtered_calls = [c for c in call_list
                           if c[0][0] and len(c[0][0][0]) > 0]
         m = filtered_calls[-1][0][0][0]
@@ -109,7 +120,7 @@ class TestZmqSpec(unittest.TestCase):
         self.send_socket.send(
             json.dumps(['test_app2', 'test_gauge', 'GAUGE', '5']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
-        metrics = json.loads(self.sub_socket.recv())
+        metrics = filtered_metric_recv(self.sub_socket)
         self.assertEqual(len(metrics), 1)
         self.assertEqual(metrics[0][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[0][1], u'test_app2')
@@ -122,7 +133,7 @@ class TestZmqSpec(unittest.TestCase):
         self.send_socket.send(
             json.dumps(['test_app2', 'test_counter', 'COUNTER', '1']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
-        metrics = json.loads(self.sub_socket.recv())
+        metrics = filtered_metric_recv(self.sub_socket)
         self.assertEqual(len(metrics), 1)
         self.assertEqual(metrics[0][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[0][1], u'test_app2')
@@ -135,93 +146,93 @@ class TestZmqSpec(unittest.TestCase):
         self.send_socket.send(
             json.dumps(['test_app2', 'test_metric', 'PERCENTILE', '13']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
-        metrics = json.loads(self.sub_socket.recv())
+        metrics = filtered_metric_recv(self.sub_socket)
         self.assertEqual(len(metrics), 5)
         self.assertEqual(metrics[0][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[0][1], u'test_app2')
-        self.assertEqual(metrics[0][2], u'test_metric50_percentile')
+        self.assertEqual(metrics[0][2], u'test_metric.50_percentile')
         self.assertEqual(metrics[0][3], 'GAUGE')
         self.assertEqual(metrics[0][4], 13)
         self.assertEqual(metrics[1][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[1][1], u'test_app2')
-        self.assertEqual(metrics[1][2], u'test_metric75_percentile')
+        self.assertEqual(metrics[1][2], u'test_metric.75_percentile')
         self.assertEqual(metrics[1][3], 'GAUGE')
         self.assertEqual(metrics[1][4], 13)
         self.assertEqual(metrics[2][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[2][1], u'test_app2')
-        self.assertEqual(metrics[2][2], u'test_metric95_percentile')
+        self.assertEqual(metrics[2][2], u'test_metric.95_percentile')
         self.assertEqual(metrics[2][3], 'GAUGE')
         self.assertEqual(metrics[2][4], 13)
         self.assertEqual(metrics[3][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[3][1], u'test_app2')
-        self.assertEqual(metrics[3][2], u'test_metric99_percentile')
+        self.assertEqual(metrics[3][2], u'test_metric.99_percentile')
         self.assertEqual(metrics[3][3], 'GAUGE')
         self.assertEqual(metrics[3][4], 13)
         self.assertEqual(metrics[4][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[4][1], u'test_app2')
-        self.assertEqual(metrics[4][2], u'test_metricaverage')
+        self.assertEqual(metrics[4][2], u'test_metric.average')
         self.assertEqual(metrics[4][3], 'GAUGE')
         self.assertEqual(metrics[4][4], 13)
 
         self.send_socket.send(
             json.dumps(['test_app2', 'test_metric', 'PERCENTILE', '1']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
-        metrics = json.loads(self.sub_socket.recv())
+        metrics = filtered_metric_recv(self.sub_socket)
         self.assertEqual(len(metrics), 5)
         self.assertEqual(metrics[0][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[0][1], u'test_app2')
-        self.assertEqual(metrics[0][2], u'test_metric50_percentile')
+        self.assertEqual(metrics[0][2], u'test_metric.50_percentile')
         self.assertEqual(metrics[0][3], 'GAUGE')
         self.assertEqual(metrics[0][4], 7.0)
         self.assertEqual(metrics[1][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[1][1], u'test_app2')
-        self.assertEqual(metrics[1][2], u'test_metric75_percentile')
+        self.assertEqual(metrics[1][2], u'test_metric.75_percentile')
         self.assertEqual(metrics[1][3], 'GAUGE')
         self.assertEqual(metrics[1][4], 10.0)
         self.assertEqual(metrics[2][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[2][1], u'test_app2')
-        self.assertEqual(metrics[2][2], u'test_metric95_percentile')
+        self.assertEqual(metrics[2][2], u'test_metric.95_percentile')
         self.assertEqual(metrics[2][3], 'GAUGE')
         self.assertEqual(metrics[2][4], 12.4)
         self.assertEqual(metrics[3][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[3][1], u'test_app2')
-        self.assertEqual(metrics[3][2], u'test_metric99_percentile')
+        self.assertEqual(metrics[3][2], u'test_metric.99_percentile')
         self.assertEqual(metrics[3][3], 'GAUGE')
         self.assertEqual(metrics[3][4], 12.880000000000001)
         self.assertEqual(metrics[4][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[4][1], u'test_app2')
-        self.assertEqual(metrics[4][2], u'test_metricaverage')
+        self.assertEqual(metrics[4][2], u'test_metric.average')
         self.assertEqual(metrics[4][3], 'GAUGE')
         self.assertEqual(metrics[4][4], 7)
 
         self.send_socket.send(
             json.dumps(['test_app2', 'test_metric', 'PERCENTILE', '5']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
-        metrics = json.loads(self.sub_socket.recv())
+        metrics = filtered_metric_recv(self.sub_socket)
         self.assertEqual(len(metrics), 5)
         self.assertEqual(metrics[0][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[0][1], u'test_app2')
-        self.assertEqual(metrics[0][2], u'test_metric50_percentile')
+        self.assertEqual(metrics[0][2], u'test_metric.50_percentile')
         self.assertEqual(metrics[0][3], 'GAUGE')
         self.assertEqual(metrics[0][4], 5.0)
         self.assertEqual(metrics[1][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[1][1], u'test_app2')
-        self.assertEqual(metrics[1][2], u'test_metric75_percentile')
+        self.assertEqual(metrics[1][2], u'test_metric.75_percentile')
         self.assertEqual(metrics[1][3], 'GAUGE')
         self.assertEqual(metrics[1][4], 9.0)
         self.assertEqual(metrics[2][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[2][1], u'test_app2')
-        self.assertEqual(metrics[2][2], u'test_metric95_percentile')
+        self.assertEqual(metrics[2][2], u'test_metric.95_percentile')
         self.assertEqual(metrics[2][3], 'GAUGE')
         self.assertEqual(metrics[2][4], 12.199999999999999)
         self.assertEqual(metrics[3][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[3][1], u'test_app2')
-        self.assertEqual(metrics[3][2], u'test_metric99_percentile')
+        self.assertEqual(metrics[3][2], u'test_metric.99_percentile')
         self.assertEqual(metrics[3][3], 'GAUGE')
         self.assertEqual(metrics[3][4], 12.84)
         self.assertEqual(metrics[4][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[4][1], u'test_app2')
-        self.assertEqual(metrics[4][2], u'test_metricaverage')
+        self.assertEqual(metrics[4][2], u'test_metric.average')
         self.assertEqual(metrics[4][3], 'GAUGE')
         self.assertEqual(metrics[4][4], 6.3333333332999997)
 
@@ -230,7 +241,8 @@ class TestZmqSpec(unittest.TestCase):
         self.send_socket.send(
             json.dumps(['test_app', 'test_gauge', 'GAUGE', '5']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
-        metrics = json.loads(self.sub_socket.recv())
+        metrics = filtered_metric_recv(self.sub_socket)
+        self.assertIsNotNone(metrics)
         self.assertEqual(len(metrics), 1)
         self.assertEqual(metrics[0][:-1],
                          [G_SPEAKEASY_HOST, u'test_app', u'test_gauge',
@@ -239,7 +251,7 @@ class TestZmqSpec(unittest.TestCase):
         self.send_socket.send(
             json.dumps(['test_app', 'test_gauge', 'GAUGE', '3']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
-        metrics = json.loads(self.sub_socket.recv())
+        metrics = filtered_metric_recv(self.sub_socket)
         self.assertEqual(len(metrics), 1)
         self.assertEqual(metrics[0][:-1],
                          [G_SPEAKEASY_HOST, u'test_app', u'test_gauge',
@@ -248,7 +260,7 @@ class TestZmqSpec(unittest.TestCase):
         self.send_socket.send(
             json.dumps(['test_app', 'test_gauge', 'GAUGE', '13']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
-        metrics = json.loads(self.sub_socket.recv())
+        metrics = filtered_metric_recv(self.sub_socket)
         self.assertEqual(len(metrics), 1)
         self.assertEqual(metrics[0][:-1],
                          [G_SPEAKEASY_HOST, u'test_app', u'test_gauge',
@@ -257,7 +269,7 @@ class TestZmqSpec(unittest.TestCase):
         self.send_socket.send(
             json.dumps(['test_app', 'test_gauge', 'GAUGE', '3']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
-        metrics = json.loads(self.sub_socket.recv())
+        metrics = filtered_metric_recv(self.sub_socket)
         self.assertEqual(len(metrics), 1)
         self.assertEqual(metrics[0][:-1],
                          [G_SPEAKEASY_HOST, u'test_app', u'test_gauge',

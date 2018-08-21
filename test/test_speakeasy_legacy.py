@@ -7,12 +7,20 @@ import zmq
 import mock
 from test_util import get_random_free_port
 from speakeasy.speakeasy import Speakeasy
+import speakeasy.speakeasy as speakeasy
+import logging
+
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s [%(levelname)s] %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S')
+logger = logging.getLogger()
 
 G_SPEAKEASY_HOST = '0.0.0.0'
 G_PUB_PORT = str(get_random_free_port())
 G_CMD_PORT = str(get_random_free_port())
 G_METRIC_SOCKET = '/var/tmp/test_metric_{0}'.format(random.random())
 G_LEGACY_METRIC_SOCKET = '/var/tmp/legacy_metric_{0}'.format(random.random())
+speakeasy.QUEUE_WAIT_SECS = 1
 
 
 def gen_speakeasy_server():
@@ -56,7 +64,7 @@ class TestSpeakeasy(unittest.TestCase):
         self.assertEqual(self.srv.emitter_args['filename'],
                          '/var/tmp/test_metrics.out')
         self.assertEqual(len(self.srv.metrics), 0)
-        self.assertEqual(self.srv.running, True)
+        self.assertFalse(self.srv.is_shutdown())
 
     def clear_sub_socket(self):
         while True:
@@ -72,7 +80,10 @@ class TestSpeakeasy(unittest.TestCase):
         legacy_sock.connect(G_LEGACY_METRIC_SOCKET)
         legacy_sock.send('test_cnt3|10|COUNTER')
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
-        metrics = json.loads(self.sub_socket.recv())
+        while True:  # skip internal metrics
+            metrics = json.loads(self.sub_socket.recv())
+            if metrics[0][1] != 'speakeasy':
+                break
         self.assertEqual(len(metrics), 1)
         self.assertEqual(metrics[0][0], G_SPEAKEASY_HOST)
         self.assertEqual(metrics[0][1], u'__LEGACY__')
@@ -86,11 +97,11 @@ class TestSpeakeasy(unittest.TestCase):
             sf.write('\n')
         with mock.patch('os.remove'):
             try:
-                s = Speakeasy(G_SPEAKEASY_HOST, G_METRIC_SOCKET,
-                              str(get_random_free_port()),
-                              str(get_random_free_port()), 'simple',
-                              ['filename=/var/tmp/test_metrics.out'],
-                              60, dummy_legacy_socket)
+                Speakeasy(G_SPEAKEASY_HOST, G_METRIC_SOCKET,
+                          str(get_random_free_port()),
+                          str(get_random_free_port()), 'simple',
+                          ['filename=/var/tmp/test_metrics.out'],
+                          60, dummy_legacy_socket)
             except socket.error:
                 # remove got patched, so we should get a address already init
                 # use socket error

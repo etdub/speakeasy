@@ -7,3 +7,4 @@ MANIFEST
 *.egg-info
 .coverage
 .tox
+.vscode
