@@ -1,5 +1,10 @@
 from setuptools import setup
+import sys
+
 import speakeasy
+
+if sys.version_info < (2, 7):
+    sys.exit('Sorry, Python < 2.7 is not supported')
 
 setup(
     name='speakeasy',
@@ -7,7 +12,6 @@ setup(
     description='Metrics aggregation server',
     author='Eric Wong',
     install_requires=[
-        'argparse',
         'pyzmq',
         'ujson',
     ],
