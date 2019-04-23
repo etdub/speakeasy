@@ -1,8 +1,9 @@
+from __future__ import absolute_import
 import collections
 import copy
 import logging
 import os
-import Queue
+import six.moves.queue
 import socket
 import sys
 import threading
@@ -11,8 +12,9 @@ import ujson
 import bisect
 import zmq
 import resource
-import utils
+from . import utils
 import signal
+import six
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +56,7 @@ class Speakeasy(object):
         self.hostname = host
         self.legacy = legacy
         self.percentiles = [0.5, 0.75, 0.95, 0.99]
-        self.metrics_queue = Queue.Queue()
+        self.metrics_queue = six.moves.queue.Queue()
         self.metrics_lock = threading.RLock()
         self.stop = threading.Event()
 
@@ -93,7 +95,8 @@ class Speakeasy(object):
         self.recv_socket = self.context.socket(zmq.PULL)
 
         # Increase the HWM
-        self.recv_socket.set_hwm(hwm)  # warn, According to http://api.zeromq.org/2-1:zmq-socket, this has no effect on a PULL socket
+        # NOTE: According to http://api.zeromq.org/2-1:zmq-socket, this has no effect on a PULL socket
+        self.recv_socket.set_hwm(hwm)
         try:
             self.recv_socket.bind('ipc://{0}'.format(self.metric_socket))
             if socket_mod:
@@ -137,12 +140,21 @@ class Speakeasy(object):
         # Index metrics by appname
         self.metrics = {}
 
+    def __str__(self):
+        return "Speakeasy({0}, sock={1}, cmd={2}, pub={3}, legacy={4}, emitter={5})".format(
+            self.hostname, self.metric_socket,
+            self.cmd_port if self.cmd_port else "-",
+            self.pub_port if self.pub_port else "-",
+            self.legacy if self.legacy else "-",
+            self.emitter_name
+        )
+
     def process_metrics_queue(self):
-        logger.info("Start processing metrics queue")
+        logger.info("Starting to process metrics queue")
         while not self.stop.is_set():
             try:
                 metric, legacy = self.metrics_queue.get(timeout=QUEUE_WAIT_SECS)
-            except Queue.Empty:
+            except six.moves.queue.Empty:
                 continue
 
             try:
@@ -151,10 +163,11 @@ class Speakeasy(object):
                 logger.warn("Failed to process metric [{0}]: {1}".format(metric, e))
 
             self.metrics_queue.task_done()
-        logger.info("Stop processing metrics queue")
+        logger.info("Stopping processing metrics queue")
 
     def gauge_append(self, lst, value):
-        "Add a value to the gauge. This adds to a running sum of the values and a counter for how many values were added"
+        """Add a value to the gauge. This adds to a running sum of the values and a counter for how many values were
+        added"""
         lst[0] += value
         lst[1] += 1
 
@@ -189,7 +202,8 @@ class Speakeasy(object):
 
         # app
         self.process_metric(["speakeasy", "metrics._app_.{0}.total".format(app_name), "COUNTER", 1])
-        self.process_metric(["speakeasy", "metrics._app_.{0}._type_.{1}.total".format(app_name, metric_type), "COUNTER", 1])
+        self.process_metric(["speakeasy", "metrics._app_.{0}._type_.{1}.total".format(app_name, metric_type),
+                             "COUNTER", 1])
 
     def process_metric(self, metric, legacy=False):
         """Add metric value to internal structures, and publish the current values to the publish socket if asked"""
@@ -256,8 +270,8 @@ class Speakeasy(object):
             if metric_type != 'PERCENTILE':
                 pub_metrics.append((self.hostname, app_name, metric_name,
                                     metric_type, pub_val, time.time()))
-            msg = ujson.dumps(pub_metrics)
-            self.pub_socket.send(msg)
+            msg = ujson.dumps(pub_metrics, ensure_ascii=False)
+            self.pub_socket.send_string(msg)
 
     def process_command(self, cmd):
         """ Process command and reply """
@@ -298,27 +312,27 @@ class Speakeasy(object):
             socks = dict(self.poller.poll(POLLING_TIMEOUT_MS))
 
             if socks.get(self.recv_socket) == zmq.POLLIN:
-                    try:
-                        data = self.recv_socket.recv()
-                        received_count += 1
-                        if not data:
-                            logger.warn("Got an empty packet (possibly rumrunner ping)")
-                            empty_packets += 1
-                            continue
-                        metric = ujson.loads(data)
-                        # Put metric on metrics queue
-                        self.metrics_queue.put((metric, False))
-                        good_count += 1
-                    except ValueError as e:
-                        logger.warn("Error receiving metric [data=%s]: %s", data, e)
-                        decode_errors += 1
+                try:
+                    data = self.recv_socket.recv_string()
+                    received_count += 1
+                    if not data:
+                        logger.warn("Got an empty packet (possibly rumrunner ping)")
+                        empty_packets += 1
                         continue
+                    metric = ujson.loads(data)
+                    # Put metric on metrics queue
+                    self.metrics_queue.put((metric, False))
+                    good_count += 1
+                except ValueError as e:
+                    logger.warn("Error receiving metric [data=%s]: %s", data, e)
+                    decode_errors += 1
+                    continue
                 # logger.debug("Received and processed %d metrics from socket", count)
 
             if socks.get(self.cmd_socket) == zmq.POLLIN:
                 while True:
                     try:
-                        data = self.cmd_socket.recv(zmq.NOBLOCK)
+                        data = self.cmd_socket.recv_string(zmq.NOBLOCK)
                         cmd = ujson.loads(data)
                         # Process command
                         self.process_command(cmd)
@@ -331,15 +345,15 @@ class Speakeasy(object):
                 # Process legacy format
                 try:
                     data, addr = self.legacy_socket.recvfrom(8192)
-                    self.metrics_queue.put((data, True))
-                except socket.error, e:
+                    self.metrics_queue.put((data.decode("utf-8"), True))
+                except Exception as e:
                     logger.error('Error on legacy socket - {0}'.format(e))
 
-        logger.info("Stop polling")
+        logger.info("Stopped polling")
 
     def emit_metrics(self):
         """ Send snapshot of metrics through emitter """
-        logger.info("Start emitting")
+        logger.info("Started emitting")
         while not self.stop.is_set():
             e_start = time.time()
 
@@ -356,7 +370,7 @@ class Speakeasy(object):
                         len(metrics_ss), duration, sleep_time)
             self.stop.wait(sleep_time)
 
-        logger.info("Stop emitting")
+        logger.info("Stopped emitting")
 
     def snapshot(self):
         """
@@ -372,19 +386,18 @@ class Speakeasy(object):
         self.reset_metrics()
 
         for app in ss:
-            for m, val in ss[app]['COUNTER'].iteritems():
+            for m, val in six.iteritems(ss[app]['COUNTER']):
                 metrics.append((app, m, val, 'COUNTER', time.time()))
 
-            for m, vals in ss[app]['GAUGE'].iteritems():
+            for m, vals in six.iteritems(ss[app]['GAUGE']):
                 if vals[1] == 0:
                     logger.debug("No values for GAUGE metric: app=%s metric_name=%s", app, m)
                     continue
 
                 if vals:
-                    metrics.append((app, m, vals[0] / float(vals[1]),
-                                    'GAUGE', time.time()))
+                    metrics.append((app, m, vals[0] / float(vals[1]), 'GAUGE', time.time()))
 
-            for m, vals in ss[app]['PERCENTILE'].iteritems():
+            for m, vals in six.iteritems(ss[app]['PERCENTILE']):
                 if len(vals) == 0:
                     logger.debug("No values for PERCENTILE metric: app=%s metric_name=%s", app, m)
                     continue
@@ -418,6 +431,7 @@ class Speakeasy(object):
         self.__start()
 
     def shutdown(self):
+        logger.info("Shutting down")
         self.__stop()
 
     def __start(self):
@@ -426,35 +440,45 @@ class Speakeasy(object):
         self.process_thread.start()
 
     def __stop(self):
-        self.stop.set()
-        logger.info("Shutting down")
-        if self.poll_thread:
-            logger.info("Waiting for poll thread to stop...")
-            self.poll_thread.join()
+        if not self.stop.is_set():
+            self.stop.set()
+            if self.poll_thread and self.poll_thread.isAlive():
+                logger.info("Waiting for poll thread to stop...")
+                self.poll_thread.join()
 
-        if self.emit_thread:
-            logger.info("Waiting for emit thread to stop...")
-            self.emit_thread.join()
+            if self.emit_thread and self.emit_thread.isAlive():
+                logger.info("Waiting for emit thread to stop...")
+                self.emit_thread.join()
 
-        if self.process_thread:
-            logger.info("Waiting for metrics queue processing thread to stop...")
-            self.process_thread.join()
+            if self.process_thread and self.process_thread.isAlive():
+                logger.info("Waiting for metrics queue processing thread to stop...")
+                self.process_thread.join()
 
-        self.__cleanup()
+        self.cleanup()
 
-    def __cleanup(self):
+    def cleanup(self):
         try:
             if self.legacy:
+                self.legacy_socket.close()
                 if os.path.exists(self.legacy):
-                    logger.info('Cleaning up legacy socket')
                     os.remove(self.legacy)
+                    logger.info('Deleted legacy socket at %s', self.legacy)
+
+            self.recv_socket.close()
             os.remove(self.metric_socket)
-        except OSError as e:
+            logger.info('Deleted metrics socket at %s', self.metric_socket)
+
+            self.cmd_socket.close()
+            if self.pub_port:
+                self.pub_socket.close()
+            self.context.term()
+        except Exception as e:
             logger.error(e)
 
 
 def import_emitter(name, **kwargs):
-    "Returns an instance of an emitter with a class `Emitter` in the module `speakeasy.emitter.$name`, or `None` if no such module could be found"
+    """Returns an instance of an emitter with a class `Emitter` in the module `speakeasy.emitter.$name`,
+    or `None` if no such module could be found"""
 
     namespace = 'speakeasy.emitter.'
     if namespace not in name:

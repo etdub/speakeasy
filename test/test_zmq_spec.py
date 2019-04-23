@@ -1,35 +1,41 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 
+from __future__ import absolute_import
 import unittest2 as unittest
 import zmq
-import json
+import ujson as json
 import time
 import random
+import os
 from mock import Mock
 from speakeasy.speakeasy import Speakeasy
-from test_util import get_random_free_port, filtered_metric_recv
+from test_util import get_random_free_port, filtered_metric_recv, filtered_metrics_from_emitter
 import speakeasy.speakeasy as speakeasy
 import logging
+import logging.handlers
 
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s [%(levelname)s] %(message)s',
-                    datefmt='%Y-%m-%d %H:%M:%S')
+# custom logger to bypass nose logging capture
 logger = logging.getLogger()
+handler = logging.handlers.RotatingFileHandler("test_zmq_spec.log")
+handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] (%(funcName)s) %(message)s',
+                     datefmt='%Y-%m-%d %H:%M:%S'))
+logger.addHandler(handler)
+
 speakeasy.QUEUE_WAIT_SECS = 1
 
 random.seed(time.time())
 G_SPEAKEASY_HOST = '0.0.0.0'
-G_METRIC_SOCKET = '/var/tmp/test_metric_{0}'.format(random.random())
-G_LEGACY_METRIC_SOCKET = '/var/tmp/legacy_metric_{0}'.format(random.random())
+G_METRIC_SOCKET = '/var/tmp/test_zmq_spec_metric_sock{0}'.format(random.random())
+G_LEGACY_METRIC_SOCKET = '/var/tmp/test_zmq_spec_legacy_metric_{0}'.format(random.random())
+G_EMITTER_LOG = '/var/tmp/test_zmq_spec_metrics_{0}.out'.format(random.random())
 G_PUB_PORT = str(get_random_free_port())
 G_CMD_PORT = str(get_random_free_port())
 
 
 def gen_speakeasy_server():
     return Speakeasy(G_SPEAKEASY_HOST, G_METRIC_SOCKET, G_CMD_PORT, G_PUB_PORT,
-                     'simple', ['filename=whatever'], 1,
-                     G_LEGACY_METRIC_SOCKET)
+                     'simple', ['filename=' + G_EMITTER_LOG], 1, G_LEGACY_METRIC_SOCKET)
 
 
 class TestEmitter(object):
@@ -45,6 +51,7 @@ class TestZmqSpec(unittest.TestCase):
     @classmethod
     def setUpClass(self):
         self.srv = gen_speakeasy_server()
+        logger.info("Server generated for test: %s", self.srv)
         # patch emitter
         self.srv.emitter = TestEmitter()
         self.send_socket = zmq.Context().socket(zmq.PUSH)
@@ -54,7 +61,8 @@ class TestZmqSpec(unittest.TestCase):
 
         self.sub_socket = zmq.Context().socket(zmq.SUB)
         self.sub_socket.connect('tcp://localhost:{0}'.format(G_PUB_PORT))
-        self.sub_socket.setsockopt(zmq.SUBSCRIBE, '')
+        self.sub_socket.setsockopt_string(zmq.SUBSCRIBE, u'')
+        self.sub_socket.setsockopt(zmq.LINGER, 0)
 
         self.poller = zmq.Poller()
         self.poller.register(self.sub_socket, zmq.POLLIN)
@@ -63,7 +71,14 @@ class TestZmqSpec(unittest.TestCase):
 
     @classmethod
     def tearDownClass(self):
+        logger.info("tearing down test class")
         self.srv.shutdown()
+        self.send_socket.close()
+        self.sub_socket.close()
+        zmq.Context().term()
+        for f in (G_METRIC_SOCKET, G_LEGACY_METRIC_SOCKET, G_EMITTER_LOG):
+            if os.path.exists(f):
+                os.remove(f)
 
     def setUp(self):
         pass
@@ -74,24 +89,24 @@ class TestZmqSpec(unittest.TestCase):
 
     def clear_sub_socket(self):
         while True:
-            socks = dict(self.poller.poll(500))
-            if self.sub_socket in socks:
-                self.sub_socket.recv()  # suck out zmq pub event
-            else:
-                break
+            try:
+                socks = dict(self.poller.poll(500))
+                if self.sub_socket in socks:
+                    self.sub_socket.recv()  # suck out zmq pub event
+                else:
+                    break
+            except zmq.Again:
+                pass
+            except zmq.ZMQError as e:
+                logger.error("Got error clearing socket: %s", e)
 
     def test_send_gauge_to_emitter(self):
         self.srv.emitter.emit = Mock()
-        self.send_socket.send(
+        self.send_socket.send_string(
             json.dumps(['test_app', 'test_gauge', 'GAUGE', '2']))
         time.sleep(2)
         # call_list = self.srv.emitter.emit.call_args_list
-        filtered_metrics = []
-        for call in self.srv.emitter.emit.call_args_list:
-            args, kwargs = call
-            for metric in args[0]:
-                if metric[0] != "speakeasy":
-                    filtered_metrics.append(metric)
+        filtered_metrics = filtered_metrics_from_emitter(self.srv.emitter.emit.call_args_list)
         self.assertGreater(len(filtered_metrics), 0, "There should be at least one metric being emitted")
         m = filtered_metrics[0]
         self.assertEqual(len(m), 5)
@@ -102,13 +117,11 @@ class TestZmqSpec(unittest.TestCase):
 
     def test_send_counter_to_emitter(self):
         self.srv.emitter.emit = Mock()
-        self.send_socket.send(
+        self.send_socket.send_string(
             json.dumps(['test_app', 'test_counter', 'COUNTER', '15']))
         time.sleep(2)
-        call_list = self.srv.emitter.emit.call_args_list
-        filtered_calls = [c for c in call_list
-                          if c[0][0] and len(c[0][0][0]) > 0]
-        m = filtered_calls[-1][0][0][0]
+        filtered_metrics = filtered_metrics_from_emitter(self.srv.emitter.emit.call_args_list)
+        m = filtered_metrics[0]
         self.assertEqual(len(m), 5)
         self.assertEqual(m[0], u'test_app')
         self.assertEqual(m[1], u'test_counter')
@@ -117,7 +130,7 @@ class TestZmqSpec(unittest.TestCase):
 
     def test_send_gauge_to_pub_socket(self):
         self.clear_sub_socket()
-        self.send_socket.send(
+        self.send_socket.send_string(
             json.dumps(['test_app2', 'test_gauge', 'GAUGE', '5']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
         metrics = filtered_metric_recv(self.sub_socket)
@@ -129,8 +142,11 @@ class TestZmqSpec(unittest.TestCase):
         self.assertEqual(metrics[0][4], 5.0)
 
     def test_send_counter_to_pub_socket(self):
-        self.clear_sub_socket()
-        self.send_socket.send(
+        try:
+            self.clear_sub_socket()
+        except Exception as e:
+            logger.fatal("Could not clear socket: %s", e)
+        self.send_socket.send_string(
             json.dumps(['test_app2', 'test_counter', 'COUNTER', '1']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
         metrics = filtered_metric_recv(self.sub_socket)
@@ -143,7 +159,7 @@ class TestZmqSpec(unittest.TestCase):
 
     def test_send_percentile_to_pub_socket(self):
         self.clear_sub_socket()
-        self.send_socket.send(
+        self.send_socket.send_string(
             json.dumps(['test_app2', 'test_metric', 'PERCENTILE', '13']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
         metrics = filtered_metric_recv(self.sub_socket)
@@ -174,7 +190,7 @@ class TestZmqSpec(unittest.TestCase):
         self.assertEqual(metrics[4][3], 'GAUGE')
         self.assertEqual(metrics[4][4], 13)
 
-        self.send_socket.send(
+        self.send_socket.send_string(
             json.dumps(['test_app2', 'test_metric', 'PERCENTILE', '1']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
         metrics = filtered_metric_recv(self.sub_socket)
@@ -205,7 +221,7 @@ class TestZmqSpec(unittest.TestCase):
         self.assertEqual(metrics[4][3], 'GAUGE')
         self.assertEqual(metrics[4][4], 7)
 
-        self.send_socket.send(
+        self.send_socket.send_string(
             json.dumps(['test_app2', 'test_metric', 'PERCENTILE', '5']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
         metrics = filtered_metric_recv(self.sub_socket)
@@ -238,7 +254,7 @@ class TestZmqSpec(unittest.TestCase):
 
     def test_gauge_avg_calculation(self):
         self.clear_sub_socket()
-        self.send_socket.send(
+        self.send_socket.send_string(
             json.dumps(['test_app', 'test_gauge', 'GAUGE', '5']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
         metrics = filtered_metric_recv(self.sub_socket)
@@ -248,7 +264,7 @@ class TestZmqSpec(unittest.TestCase):
                          [G_SPEAKEASY_HOST, u'test_app', u'test_gauge',
                           u'GAUGE', 5.0])
 
-        self.send_socket.send(
+        self.send_socket.send_string(
             json.dumps(['test_app', 'test_gauge', 'GAUGE', '3']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
         metrics = filtered_metric_recv(self.sub_socket)
@@ -257,7 +273,7 @@ class TestZmqSpec(unittest.TestCase):
                          [G_SPEAKEASY_HOST, u'test_app', u'test_gauge',
                           u'GAUGE', 4.0])
 
-        self.send_socket.send(
+        self.send_socket.send_string(
             json.dumps(['test_app', 'test_gauge', 'GAUGE', '13']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
         metrics = filtered_metric_recv(self.sub_socket)
@@ -266,7 +282,7 @@ class TestZmqSpec(unittest.TestCase):
                          [G_SPEAKEASY_HOST, u'test_app', u'test_gauge',
                           u'GAUGE', 7.0])
 
-        self.send_socket.send(
+        self.send_socket.send_string(
             json.dumps(['test_app', 'test_gauge', 'GAUGE', '3']))
         self.assertGreater(len(dict(self.poller.poll(500))), 0)
         metrics = filtered_metric_recv(self.sub_socket)
