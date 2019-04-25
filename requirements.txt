@@ -1,6 +1,7 @@
 argparse
 nose
-pyzmq
+pyzmq>=16,<18
 ujson
 unittest2
 mock
+flake8

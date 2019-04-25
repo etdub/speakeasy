@@ -8,3 +8,5 @@ MANIFEST
 .coverage
 .tox
 .vscode
+.nose*
+*.log

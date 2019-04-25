@@ -1,10 +1,19 @@
 language: python
+dist: xenial  # https://docs.travis-ci.com/user/languages/python/#python-37-and-higher
+
 python:
+  - "3.5"
+  - "3.6"
+  - "3.7"
   - "2.7"
+
 install:
   - pip install -r requirements.txt
   - pip install coveralls
+
 script:
-  nosetests --with-coverage --cover-package=speakeasy
+  - flake8 speakeasy test
+  - nosetests --with-coverage --cover-package=speakeasy
+
 after_success:
   coveralls

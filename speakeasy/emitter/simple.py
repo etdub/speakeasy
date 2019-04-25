@@ -9,6 +9,7 @@ this emitter will attempt to write to `metrics.out` barring any permissions issu
 
 The special names `stdout` or `stderr` will send outputs to the appropriate stream
 """
+from __future__ import absolute_import
 import logging
 import sys
 
